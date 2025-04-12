@@ -68,3 +68,14 @@
 
 ## How to profile the model?
 
+So far ONNX and Pytorch havent been that useful, this could be due to the specificity on the naming of each layer. I will try with the IREE profiler and see if it is more informative.
+
+### Known problems:
+- For quantizing the model we need onnxruntime 1.16.0, but for doing profiling we need the latest version which is 1.19.2. So far I have only manage to go around it by executing profiling and quantize cells separately. LESS THAN IDEAL. I will do separate scripts for this.
+    ```bash
+    pip install onnxruntime==1.16.0
+    ```
+    vs.
+    ```bash
+    pip install --upgrade onnxruntime
+    ```
