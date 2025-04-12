@@ -1,3 +1,6 @@
 [submodule "third_party/iree"]
 	path = third_party/iree
 	url = https://github.com/iree-org/iree.git
+[submodule "third_party/MobileSAM"]
+	path = third_party/MobileSAM
+	url = https://github.com/ChaoningZhang/MobileSAM.git
