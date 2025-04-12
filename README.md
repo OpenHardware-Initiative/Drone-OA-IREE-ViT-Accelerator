@@ -70,6 +70,8 @@
 
 So far ONNX and Pytorch havent been that useful, this could be due to the specificity on the naming of each layer. I will try with the IREE profiler and see if it is more informative.
 
+The noteebok `onnx_model_example.ipynb` is supposed to be replace the original version found in `third_party/MobileSAM/notebooks/`.
+
 ### Known problems:
 - For quantizing the model we need onnxruntime 1.16.0, but for doing profiling we need the latest version which is 1.19.2. So far I have only manage to go around it by executing profiling and quantize cells separately. LESS THAN IDEAL. I will do separate scripts for this.
     ```bash
@@ -79,3 +81,7 @@ So far ONNX and Pytorch havent been that useful, this could be due to the specif
     ```bash
     pip install --upgrade onnxruntime
     ```
+
+## Visualizing the model
+
+You can either download a SVG visualization extension for VSCode called `Svg Preview` (look inside `/media`) or the NN visualization extension from ONNX called `ONNX Viewer` (look inside `/models`).
