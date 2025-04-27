@@ -172,3 +172,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# pyenv files
+.python-version
+
+# poetry files
+poetry.lock
