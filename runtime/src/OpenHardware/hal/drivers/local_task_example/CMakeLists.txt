@@ -50,18 +50,4 @@ iree_cc_library(
   PUBLIC
 )
 
-iree_register_external_hal_driver(
-  NAME
-    ita_local
-  SOURCE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}"
-  BINARY_DIR
-    "${CMAKE_CURRENT_BINARY_DIR}"
-  DRIVER_TARGET
-    iree::OpenHardware::driver::ITA_local::registration
-  REGISTER_FN
-    iree_hal_ita_local_driver_module_register
-)
-set(IREE_EXTERNAL_HAL_DRIVERS ita_local)
-
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

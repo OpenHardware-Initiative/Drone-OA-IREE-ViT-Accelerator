@@ -4,22 +4,28 @@
 
 1. Ensure Conda is installed.
 2. Clone Repo
-3. Setup Conda Environment
+3. Call:
+   ```bash
+   git pull
+   git lfs pull
+    ```
+4. Setup Conda Environment
     ```bash
     conda env create -f environment.yml
     conda activate mobileSAM
     ```
-4. Update submodules
+5. Update submodules
     ```bash
     git submodule update --init --recursive
     ```
-5. Build IREE (for CPU)
+6. Build IREE (for CPU)
     ```bash
     mkdir build
     cmake \
         -G Ninja \
         -B build/ \
         -S third_party/iree \
+        -DIREE_CMAKE_PLUGIN_PATHS=$PWD \
         -DCMAKE_INSTALL_PREFIX=./build/ \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DIREE_BUILD_PYTHON_BINDINGS=ON \
