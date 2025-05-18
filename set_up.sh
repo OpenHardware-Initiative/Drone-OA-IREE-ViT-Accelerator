@@ -20,12 +20,12 @@ cd vitfly
 echo "Setting up Python environment"
 conda env create -f ./flightmare/environment.yml python=3.8
 source ~/.bashrc
-conda activate flightmare
+conda activate pubflight
 
 # Install additional Python dependencies
 echo "Installing additional Python dependencies"
 pip install \
-    empy \
+    empy==3.3.4 \
     catkin-tools \
     rospkg \
     pyyaml \
