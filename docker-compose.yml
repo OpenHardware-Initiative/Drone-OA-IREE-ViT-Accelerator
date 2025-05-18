@@ -1,0 +1,16 @@
+version: '3.9'
+services:
+  ros-noetic:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    shm_size: '2gb'
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
