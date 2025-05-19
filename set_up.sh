@@ -16,11 +16,6 @@ cd ~/catkin_ws/src
 git clone https://github.com/anish-bhattacharya/ViT-for-quadrotor-obstacle-avoidance.git vitfly
 cd vitfly
 
-# Install the Conda environment
-echo "Setting up Python environment"
-conda env create -f ./flightmare/environment.yml python=3.8
-source ~/.bashrc
-conda activate pubflight
 
 # Install additional Python dependencies
 echo "Installing additional Python dependencies"

@@ -1,30 +1,16 @@
 FROM ros:noetic
 
-# Install dependencies for Miniconda
+# Install basic dependencies and Python 3.8
 RUN apt-get update && apt-get install -y \
-    wget \
-    bzip2 \
-    ca-certificates \
-    libglib2.0-0 \
-    libxext6 \
-    libsm6 \
-    libxrender1 \
-    git \
-    python3-catkin-tools \
-    python3-empy \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN sudo apt update && sudo apt install -y \
     build-essential \
     cmake \
     git \
+    python3.8 \
+    python3.8-dev \
+    python3.8-venv \
     python3-pip \
-    python3-dev \
-    python3-setuptools \
-    python3-numpy \
-    python3-yaml \
+    python3-catkin-tools \
     python3-empy \
-    python3-rospkg \
     ros-noetic-catkin \
     ros-noetic-roscpp \
     ros-noetic-genmsg \
@@ -46,6 +32,11 @@ RUN sudo apt update && sudo apt install -y \
     ros-noetic-tf2-msgs \
     ros-noetic-tf2-sensor-msgs \
     ros-noetic-tf2-geometry-msgs \
+    ros-noetic-rospy \
+    ros-noetic-roslaunch \
+    ros-noetic-common-msgs \
+    ros-noetic-rosbash \
+    ros-noetic-rosboost-cfg \
     libyaml-cpp-dev \
     libeigen3-dev \
     libopencv-dev \
@@ -56,29 +47,29 @@ RUN sudo apt update && sudo apt install -y \
     libglvnd-dev \
     libxrender1 \
     libxext6 \
-    libsm6
+    libsm6 \
+    libffi-dev \
+    libssl-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Environment variables for Conda
-ENV CONDA_DIR=/opt/conda
-ENV PATH=$CONDA_DIR/bin:$PATH
+# Set Python 3.8 as the default
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1
 
-# Install Miniconda
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
-    mkdir -p $CONDA_DIR && \
-    bash /tmp/miniconda.sh -b -u -p $CONDA_DIR && \
-    rm /tmp/miniconda.sh && \
-    conda init bash && \
-    conda clean -afy
+# Upgrade pip and setuptools
+RUN python3 -m pip install --upgrade "pip<24.1" "setuptools<60.0" "importlib-metadata==4.8.3"
+
+# Install Python dependencies
+COPY requirements.txt /tmp/requirements.txt
+RUN python3.8 -m pip install -r /tmp/requirements.txt
 
 # Copy the setup script
 COPY ./set_up.sh /root/set_up.sh
-
 COPY ./catkin_ws/src/data/ /root/data/
-
 RUN chmod +x /root/set_up.sh
+RUN /root/set_up.sh
 
 WORKDIR /root
-
 
 # Keep the container running
 CMD ["bash"]
