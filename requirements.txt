@@ -57,6 +57,7 @@ tensorboard-plugin-wit==1.8.1
 toml==0.10.2
 tomli==2.0.1
 torch==1.10.2
+torchvision==0.19.1
 tqdm==4.62.3
 types-protobuf==3.19.12
 types-setuptools==57.4.9
