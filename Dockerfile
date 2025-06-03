@@ -65,7 +65,7 @@ RUN python3.8 -m pip install -r /tmp/requirements.txt
 
 # Copy the setup script
 COPY ./set_up.sh /root/set_up.sh
-COPY ./catkin_ws/src/data/ /root/data/
+COPY ./data/ /root/data/
 RUN chmod +x /root/set_up.sh
 RUN /root/set_up.sh
 
