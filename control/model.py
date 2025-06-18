@@ -72,26 +72,47 @@ class LSTMNetVIT(nn.Module):
             out,h = self.lstm(out)
         out = self.nn_fc2(out)
         return out, h
+    
+class ViT(nn.Module):
+    """
+    ViT+FC Network 
+    Num Params: 3,101,199   
+    """
+    def __init__(self):
+        super().__init__()
+        self.encoder_blocks = nn.ModuleList([
+            MixTransformerEncoderLayer(1, 32, patch_size=7, stride=4, padding=3, n_layers=2, reduction_ratio=8, num_heads=1, expansion_factor=8),
+            MixTransformerEncoderLayer(32, 64, patch_size=3, stride=2, padding=1, n_layers=2, reduction_ratio=4, num_heads=2, expansion_factor=8)
+        ])        
+        self.decoder = nn.Linear(4608, 512)
+        self.nn_fc1 = spectral_norm(nn.Linear(517, 256))
+        self.nn_fc2 = spectral_norm(nn.Linear(256, 3))
+        self.up_sample = nn.Upsample(size=(16,24), mode='bilinear', align_corners=True)
+        self.pxShuffle = nn.PixelShuffle(upscale_factor=2)
+        self.down_sample = nn.Conv2d(48,12,3, padding = 1)
+
+    def forward(self, X):
+
+        X = refine_inputs(X)
+
+        x = X[0]
+        embeds = [x]
+        for block in self.encoder_blocks:
+            embeds.append(block(embeds[-1]))        
+        out = embeds[1:]
+        out = torch.cat([self.pxShuffle(out[1]),self.up_sample(out[0])],dim=1) 
+        out = self.down_sample(out)
+        out = self.decoder(out.flatten(1))
+        out = torch.cat([out, X[1]/10, X[2]], dim=1).float()
+        out = F.leaky_relu(self.nn_fc1(out))
+        out = self.nn_fc2(out)
+
+        return out, None
 
 
 
 if __name__ == '__main__':
     print("MODEL NUM PARAMS ARE")
-    model = ConvNet().float()
-    print("ConvNet: ")
-    print(sum(p.numel() for p in model.parameters() if p.requires_grad))
-
-    model = LSTMNet().float()
-    print("LSTMNet: ")
-    print(sum(p.numel() for p in model.parameters() if p.requires_grad))
-
-    model = UNetConvLSTMNet().float()
-    print("UNET: ")
-    print(sum(p.numel() for p in model.parameters() if p.requires_grad))
-
-    model = ViT().float()
-    print("VIT: ")
-    print(sum(p.numel() for p in model.parameters() if p.requires_grad))
 
     model = LSTMNetVIT().float()
     print("VITLSTM: ")

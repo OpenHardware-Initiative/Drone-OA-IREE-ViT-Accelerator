@@ -148,58 +148,8 @@ class MixTransformerEncoderLayer(nn.Module):
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous() #BCHW
         return x
 
-
-
-class ITA(nn.Module):
-    """
-    Integer Transformer Accelerator (ITA) attention block for deployment.
-    This version assumes quantized weights and executes pure attention logic.
-    """
-    def __init__(self, embed_dim):
-        super().__init__()
-        self.q_proj = nn.Linear(embed_dim, embed_dim, bias=True)
-        self.k_proj = nn.Linear(embed_dim, embed_dim, bias=True)
-        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=True)
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=True)
-
-    def forward(self, q_input, kv_input):
-        """
-        Emulates the ONNX ITA graph structure:
-        - Linear projections for Q, K, V
-        - QKᵀ attention with softmax approximation (ITAPartialMax)
-        - Attention output projection
-
-        Parameters:
-        - q_input: (B, N, C), e.g. query from patch embeddings
-        - kv_input: (B, N, C), same or different source for key/value
-
-        Returns:
-        - (B, N, C): processed token features
-        """
-        B, N, C = q_input.shape
-
-        # Linear projections (assumed quantized on hardware)
-        Q = self.q_proj(q_input)
-        K = self.k_proj(kv_input)
-        V = self.v_proj(kv_input)
-
-        # Attention mechanism
-        attn_scores = torch.matmul(Q, K.transpose(-2, -1))  # (B, N, N)
-        attn_weights = torch.softmax(attn_scores, dim=-1)   # ITAPartialMax equivalent
-        context = torch.matmul(attn_weights, V)             # (B, N, C)
-
-        # Final output projection
-        output = self.out_proj(context)
-        return output
-
-
-class ITAWithRequant(nn.Module):
-    """
-    High-fidelity emulation of the Integer Transformer Accelerator (ITA) attention block.
-    Implements all 7 stages using quantized projections, RequantShift logic, and approximate softmax.
-    """
-
-    def __init__(self, embed_dim,
+class MultiheadITAWithRequant(nn.Module):
+    def __init__(self, embed_dim, num_heads,
                  multiplier_q=1.0, shift_q=0,
                  multiplier_k=1.0, shift_k=0,
                  multiplier_v=1.0, shift_v=0,
@@ -209,54 +159,66 @@ class ITAWithRequant(nn.Module):
                  multiplier_final=1.0, shift_final=0,
                  zero_point=0):
         super().__init__()
-        self.q_proj = nn.Linear(embed_dim, embed_dim, bias=True)
-        self.k_proj = nn.Linear(embed_dim, embed_dim, bias=True)
-        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=True)
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=True)
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+        self.embed_dim = embed_dim
 
-        # Requantization parameters
-        self.mq, self.sq = multiplier_q, shift_q
-        self.mk, self.sk = multiplier_k, shift_k
-        self.mv, self.sv = multiplier_v, shift_v
-        self.ma, self.sa = multiplier_attn, shift_attn
-        self.mav, self.sav = multiplier_av, shift_av
-        self.mo, self.so = multiplier_o, shift_o
-        self.mf, self.sf = multiplier_final, shift_final
-        self.zero_point = zero_point
+        assert embed_dim % num_heads == 0, "embed_dim must be divisible by num_heads"
 
-    def requant_shift(self, x, multiplier, shift):
-        """Simulate RequantShift: (x * multiplier) >> shift + zero_point, clamped to int8."""
-        scaled = x * multiplier
-        shifted = torch.div(scaled, 2 ** shift, rounding_mode='floor')
-        return torch.clamp(shifted + self.zero_point, -128, 127).to(torch.int8)
+        # Projections: shared across heads but produce concatenated head_dim output
+        self.q_proj = nn.Linear(embed_dim, embed_dim)
+        self.k_proj = nn.Linear(embed_dim, embed_dim)
+        self.v_proj = nn.Linear(embed_dim, embed_dim)
+        self.out_proj = nn.Linear(embed_dim, embed_dim)
+
+        # Requant parameters (shared per head for now; can be extended to per-head)
+        self.params = {
+            "mq": multiplier_q, "sq": shift_q,
+            "mk": multiplier_k, "sk": shift_k,
+            "mv": multiplier_v, "sv": shift_v,
+            "ma": multiplier_attn, "sa": shift_attn,
+            "mav": multiplier_av, "sav": shift_av,
+            "mo": multiplier_o, "so": shift_o,
+            "mf": multiplier_final, "sf": shift_final,
+            "zp": zero_point,
+        }
+
+    def requant_shift(self, x, mult, shift, zp=0):
+        x = x * mult
+        x = torch.div(x, 2 ** shift, rounding_mode='floor')
+        return torch.clamp(x + zp, -128, 127).to(torch.int8)
 
     def forward(self, q_input, kv_input):
-        """
-        Emulates:
-        [1–3] Linear projections with quant → [4] attention logits → softmax
-        [5] weighted values → [6] output projection → [7] final requant
-        """
-        B, N, C = q_input.shape
+        B, N, _ = q_input.shape
 
-        # Stage 1–3: Linear projections and Requant
-        Q = self.requant_shift(self.q_proj(q_input).to(torch.int32), self.mq, self.sq)
-        K = self.requant_shift(self.k_proj(kv_input).to(torch.int32), self.mk, self.sk)
-        V = self.requant_shift(self.v_proj(kv_input).to(torch.int32), self.mv, self.sv)
+        # Linear projections
+        Q = self.q_proj(q_input).reshape(B, N, self.num_heads, self.head_dim)
+        K = self.k_proj(kv_input).reshape(B, N, self.num_heads, self.head_dim)
+        V = self.v_proj(kv_input).reshape(B, N, self.num_heads, self.head_dim)
 
-        # Stage 4: Q × Kᵗ → Requant → Approx. Softmax
-        attn_logits = torch.matmul(Q.to(torch.int32), K.transpose(-2, -1).to(torch.int32))
-        attn_logits = self.requant_shift(attn_logits, self.ma, self.sa)
+        Q = self.requant_shift(Q.to(torch.int32), self.params["mq"], self.params["sq"])
+        K = self.requant_shift(K.to(torch.int32), self.params["mk"], self.params["sk"])
+        V = self.requant_shift(V.to(torch.int32), self.params["mv"], self.params["sv"])
+
+        # Attention computation per head
+        Q = Q.permute(0, 2, 1, 3)  # (B, H, N, D)
+        K = K.permute(0, 2, 1, 3)
+        V = V.permute(0, 2, 1, 3)
+
+        attn_logits = torch.matmul(Q, K.transpose(-2, -1))  # (B, H, N, N)
+        attn_logits = self.requant_shift(attn_logits, self.params["ma"], self.params["sa"])
+
         attn_weights = ita_partial_max(attn_logits.float(), k=8)
 
-        # Stage 5: A × V → Requant
-        context = torch.matmul(attn_weights, V.to(torch.int32))
-        context = self.requant_shift(context, self.mav, self.sav)
+        context = torch.matmul(attn_weights, V.to(torch.int32))  # (B, H, N, D)
+        context = self.requant_shift(context, self.params["mav"], self.params["sav"])
 
-        # Stage 6: Output projection → Requant
-        output = self.requant_shift(self.out_proj(context).to(torch.int32), self.mo, self.so)
+        # Concatenate all heads
+        context = context.permute(0, 2, 1, 3).reshape(B, N, self.embed_dim)
 
-        # Stage 7: Final scaling (e.g., post-layer normalization or pooling)
-        final = self.requant_shift(output.to(torch.int32), self.mf, self.sf)
+        output = self.out_proj(context.to(torch.float32))  # Use float proj for now
+        output = self.requant_shift(output.to(torch.int32), self.params["mo"], self.params["so"])
+        final = self.requant_shift(output.to(torch.int32), self.params["mf"], self.params["sf"])
 
         return final
 
@@ -273,3 +235,34 @@ def ita_partial_max(logits: torch.Tensor, k: int = 8) -> torch.Tensor:
     # Apply softmax only over masked values
     weights = F.softmax(masked_logits, dim=-1)
     return weights
+
+class ITASelfAttentionWrapper(nn.Module):
+    def __init__(self, channels, embed_dim, num_heads, reduction_ratio, efficient_attn, itaparameters):
+        super().__init__()
+        # Reduction Parameters #
+        self.cn1 = nn.Conv2d(in_channels=channels, out_channels=channels, kernel_size=reduction_ratio, stride= reduction_ratio)
+        self.ln1 = nn.LayerNorm(channels)
+        # Attention Parameters #
+        self.self_attn = MultiheadITAWithRequant(embed_dim=embed_dim, num_heads=num_heads, **itaparameters)
+        self.efficient_attn = efficient_attn
+
+    def forward(self, x, H, W):
+        B,N,C = x.shape
+        # B, N, C -> B, C, N
+        # Optional spatial reduction for keys and values
+        if self.efficient_attn:
+            x1 = x.permute(0,2,1)
+            # BCN -> BCHW
+            x1 = x1.reshape(B,C,H,W)
+            x1 = self.cn1(x1)
+            x1 = x1.reshape(B,C,-1)
+            x1 = x1.permute(0,2,1).contiguous()
+            x1 = self.ln1(x1)
+
+            # Perform attention with (x as query, x1 as kv)
+            out = self.self_attn(x, x1)
+
+        else:
+            # Perform attention with (x as query and kv)
+            out = self.self_attn(x, x)
+        return out.float()
