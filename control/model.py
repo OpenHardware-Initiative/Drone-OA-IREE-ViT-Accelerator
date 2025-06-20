@@ -72,6 +72,69 @@ class LSTMNetVIT(nn.Module):
             out,h = self.lstm(out)
         out = self.nn_fc2(out)
         return out, h
+
+class LSTMNetITAConformer(nn.Module):
+    """
+    ITAConformer+LSTM Network
+    """
+    def __init__(self, itaparameters=None, efficient_attn=True):
+        super().__init__()
+        
+        if itaparameters == None:
+            itaparameters = {
+            "mq": 1.0, "sq": 0, # multiplier_q and shift_q
+            "mk": 1.0, "sk": 0, # multiplier_k and shift_k
+            "mv": 1.0, "sv": 0, # multiplier_v and shift_v
+            "ma": 1.0, "sa": 0, # multiplier_attn and shift_attn
+            "mav": 1.0, "sav": 0, # multiplier_av and shift_av
+            "mo": 1.0, "so": 0, # multiplier_o and shift_o
+            "mf": 1.0, "sf": 0, # multiplier_final and shift_final
+            "zp": 0, # zero_point
+            }
+
+        self.encoder_blocks = nn.ModuleList([
+            MiXITAEncoderLayer(1, 32, patch_size=7, stride=4, padding=3,
+                               n_layers=2, reduction_ratio=8, num_heads=1,
+                               expansion_factor=8, embed_dim=32,
+                               efficient_attn=efficient_attn, itaparameters=itaparameters),
+            MiXITAEncoderLayer(32, 64, patch_size=3, stride=2, padding=1,
+                               n_layers=2, reduction_ratio=4, num_heads=2,
+                               expansion_factor=8, embed_dim=64,
+                               efficient_attn=efficient_attn, itaparameters=itaparameters)
+        ])
+
+        self.decoder = spectral_norm(nn.Linear(4608, 512))
+        self.lstm = nn.LSTM(input_size=517, hidden_size=128,
+                            num_layers=3, dropout=0.1)
+        self.nn_fc2 = spectral_norm(nn.Linear(128, 3))
+
+        self.up_sample = nn.Upsample(size=(16, 24), mode='bilinear', align_corners=True)
+        self.pxShuffle = nn.PixelShuffle(upscale_factor=2)
+        self.down_sample = nn.Conv2d(48, 12, 3, padding=1)
+
+    def forward(self, X):
+        X = refine_inputs(X)
+        x = X[0]
+
+        # Process each timestep in the sequence
+        x = x.squeeze(0)  # (T, C, H, W)
+        embeds = [x]
+        for block in self.encoder_blocks:
+            embeds.append(block(embeds[-1]))
+        out = embeds[1:]
+        # Each out[i]: (T, C, H, W)
+        out = torch.cat([self.pxShuffle(out[1]), self.up_sample(out[0])], dim=1)
+        out = self.down_sample(out)
+        # Flatten per timestep: (T, 12, 16, 24) -> (T, 4608)
+        out = self.decoder(out.flatten(1))
+        # Concat additional inputs: (T, 512) + (1, T, 1) + (1, T, 4) => (T, 517)
+        out = torch.cat([out, X[1].squeeze(0)/10, X[2].squeeze(0)], dim=1).float()
+        if len(X) > 3:
+            out, h = self.lstm(out, X[3])
+        else:
+            out, h = self.lstm(out)
+        out = self.nn_fc2(out)
+        return out, h
     
 class ViT(nn.Module):
     """
@@ -109,6 +172,62 @@ class ViT(nn.Module):
 
         return out, None
 
+class ITAConformer(nn.Module):   
+    def __init__(self, itaparameters=None, efficient_attn=True):
+        super().__init__()
+        
+        if itaparameters == None:
+            itaparameters = {
+            "mq": 1.0, "sq": 0, # multiplier_q and shift_q
+            "mk": 1.0, "sk": 0, # multiplier_k and shift_k
+            "mv": 1.0, "sv": 0, # multiplier_v and shift_v
+            "ma": 1.0, "sa": 0, # multiplier_attn and shift_attn
+            "mav": 1.0, "sav": 0, # multiplier_av and shift_av
+            "mo": 1.0, "so": 0, # multiplier_o and shift_o
+            "mf": 1.0, "sf": 0, # multiplier_final and shift_final
+            "zp": 0, # zero_point
+            }
+
+        self.encoder_blocks = nn.ModuleList([
+            MiXITAEncoderLayer(1, 32, patch_size=7, stride=4, padding=3,
+                               n_layers=2, reduction_ratio=8, num_heads=1,
+                               expansion_factor=8, embed_dim=32,
+                               efficient_attn=efficient_attn, itaparameters=itaparameters),
+            MiXITAEncoderLayer(32, 64, patch_size=3, stride=2, padding=1,
+                               n_layers=2, reduction_ratio=4, num_heads=2,
+                               expansion_factor=8, embed_dim=64,
+                               efficient_attn=efficient_attn, itaparameters=itaparameters)
+        ])       
+        self.decoder = nn.Linear(4608, 512)
+        self.nn_fc1 = spectral_norm(nn.Linear(517, 256))
+        self.nn_fc2 = spectral_norm(nn.Linear(256, 3))
+        self.up_sample = nn.Upsample(size=(16,24), mode='bilinear', align_corners=True)
+        self.pxShuffle = nn.PixelShuffle(upscale_factor=2)
+        self.down_sample = nn.Conv2d(48,12,3, padding = 1)
+
+    def forward(self, X):
+        X = refine_inputs(X)
+
+        """# Accept input shapes (T, C, H, W), (T, 1), (T, 4)
+        x = X[0].unsqueeze(0)  # (T, C, H, W) → (1, T, C, H, W)
+        # If using X[1] and X[2], ensure they are also batched if needed for compatibility
+        # But here, for ViT-style models, we keep (T, 1) and (T, 4) as is
+        x = x.squeeze(0)  # (T, C, H, W)"""
+
+        x = X[0]
+        embeds = [x]
+        for block in self.encoder_blocks:
+            embeds.append(block(embeds[-1]))
+        out = embeds[1:]
+        out = torch.cat([self.pxShuffle(out[1]), self.up_sample(out[0])], dim=1)
+        out = self.down_sample(out)
+        out = self.decoder(out.flatten(1))
+        out = torch.cat([out, X[1]/10, X[2]], dim=1).float()
+        out = F.leaky_relu(self.nn_fc1(out))
+        out = self.nn_fc2(out)
+
+        return out, None
+
 
 
 if __name__ == '__main__':
@@ -117,3 +236,12 @@ if __name__ == '__main__':
     model = LSTMNetVIT().float()
     print("VITLSTM: ")
     print(sum(p.numel() for p in model.parameters() if p.requires_grad))
+    model2 = LSTMNetITAConformer().float()
+    print("ITAConformerLSTM: ")
+    print(sum(p.numel() for p in model2.parameters() if p.requires_grad))
+    model3 = ViT().float()
+    print("ViT: ")
+    print(sum(p.numel() for p in model3.parameters() if p.requires_grad))
+    model4 = ITAConformer().float()
+    print("ITAConformer: ")
+    print(sum(p.numel() for p in model4.parameters() if p.requires_grad))
