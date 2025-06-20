@@ -164,7 +164,7 @@ class MultiheadITAWithRequant(nn.Module):
         self.v_proj = nn.Linear(embed_dim, embed_dim)
         self.out_proj = nn.Linear(embed_dim, embed_dim)
 
-        # Requant parameters (shared per head for now; can be extended to per-head)
+        # Requant parameters
         self.params = params
 
     def requant_shift(self, x, mult, shift):
@@ -256,7 +256,6 @@ class MiXITAEncoderLayer(nn.Module):
                  n_layers, reduction_ratio, num_heads, expansion_factor, embed_dim, efficient_attn=True, itaparameters=None):
         super().__init__()
         self.patchMerge = OverlapPatchMerging(in_channels, out_channels, patch_size, stride, padding) # B N embed dim
-        #You might be wondering why I didn't used a cleaner implementation but the input to each forward function is different
         self._attn = nn.ModuleList([ITASelfAttentionWrapper(channels=out_channels,
                                                             embed_dim=embed_dim, 
                                                             num_heads=num_heads, 
@@ -272,7 +271,7 @@ class MiXITAEncoderLayer(nn.Module):
         x,H,W = self.patchMerge(x) # B N embed dim (C)
         for i in range(len(self._attn)):
             x = x + self._attn[i].forward(x, H, W) #BNC
-            x = x + self._ffn[i].forward(x, H, W) #BNC
+            x = x + self._ffn[i].forward(x, H, W) #BNC  # Skip connections
             x = self._lNorms[i].forward(x) #BNC
         # Reshape tokens back to spatial format for next stage: (B, N, C) → (B, C, H, W)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous() #BCHW

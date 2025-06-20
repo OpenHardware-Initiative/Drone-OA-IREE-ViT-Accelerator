@@ -112,21 +112,25 @@ class LSTMNetITAConformer(nn.Module):
         self.pxShuffle = nn.PixelShuffle(upscale_factor=2)
         self.down_sample = nn.Conv2d(48, 12, 3, padding=1)
 
+    def _encode(self, x):
+        embeds = [x]
+        for block in self.encoder_blocks:
+            embeds.append(block(embeds[-1]))
+        return embeds[1:]
+
+    def _decode(self, encoded_features):
+        out = torch.cat([self.pxShuffle(encoded_features[1]), self.up_sample(encoded_features[0])], dim=1)
+        out = self.down_sample(out)
+        return self.decoder(out.flatten(1))
+
     def forward(self, X):
         X = refine_inputs(X)
         x = X[0]
 
-        # Process each timestep in the sequence
-        x = x.squeeze(0)  # (T, C, H, W)
-        embeds = [x]
-        for block in self.encoder_blocks:
-            embeds.append(block(embeds[-1]))
-        out = embeds[1:]
+        encoded_features = self._encode(x)
+        out = self._decode(encoded_features)
         # Each out[i]: (T, C, H, W)
-        out = torch.cat([self.pxShuffle(out[1]), self.up_sample(out[0])], dim=1)
-        out = self.down_sample(out)
         # Flatten per timestep: (T, 12, 16, 24) -> (T, 4608)
-        out = self.decoder(out.flatten(1))
         # Concat additional inputs: (T, 512) + (1, T, 1) + (1, T, 4) => (T, 517)
         out = torch.cat([out, X[1].squeeze(0)/10, X[2].squeeze(0)], dim=1).float()
         if len(X) > 3:
@@ -205,23 +209,23 @@ class ITAConformer(nn.Module):
         self.pxShuffle = nn.PixelShuffle(upscale_factor=2)
         self.down_sample = nn.Conv2d(48,12,3, padding = 1)
 
-    def forward(self, X):
-        X = refine_inputs(X)
-
-        """# Accept input shapes (T, C, H, W), (T, 1), (T, 4)
-        x = X[0].unsqueeze(0)  # (T, C, H, W) → (1, T, C, H, W)
-        # If using X[1] and X[2], ensure they are also batched if needed for compatibility
-        # But here, for ViT-style models, we keep (T, 1) and (T, 4) as is
-        x = x.squeeze(0)  # (T, C, H, W)"""
-
-        x = X[0]
+    def _encode(self, x):
         embeds = [x]
         for block in self.encoder_blocks:
             embeds.append(block(embeds[-1]))
-        out = embeds[1:]
-        out = torch.cat([self.pxShuffle(out[1]), self.up_sample(out[0])], dim=1)
+        return embeds[1:]
+
+    def _decode(self, encoded_features):
+        out = torch.cat([self.pxShuffle(encoded_features[1]), self.up_sample(encoded_features[0])], dim=1)
         out = self.down_sample(out)
-        out = self.decoder(out.flatten(1))
+        return self.decoder(out.flatten(1))
+
+    def forward(self, X):
+        X = refine_inputs(X)
+
+        x = X[0]
+        encoded_features = self._encode(x)
+        out = self._decode(encoded_features)
         out = torch.cat([out, X[1]/10, X[2]], dim=1).float()
         out = F.leaky_relu(self.nn_fc1(out))
         out = self.nn_fc2(out)
