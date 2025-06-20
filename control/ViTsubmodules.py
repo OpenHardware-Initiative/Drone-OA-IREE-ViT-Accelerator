@@ -149,21 +149,14 @@ class MixTransformerEncoderLayer(nn.Module):
         return x
 
 class MultiheadITAWithRequant(nn.Module):
-    def __init__(self, embed_dim, num_heads,
-                 multiplier_q=1.0, shift_q=0,
-                 multiplier_k=1.0, shift_k=0,
-                 multiplier_v=1.0, shift_v=0,
-                 multiplier_attn=1.0, shift_attn=0,
-                 multiplier_av=1.0, shift_av=0,
-                 multiplier_o=1.0, shift_o=0,
-                 multiplier_final=1.0, shift_final=0,
-                 zero_point=0):
+    def __init__(self, embed_dim, num_heads, params=None):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
         self.embed_dim = embed_dim
 
         assert embed_dim % num_heads == 0, "embed_dim must be divisible by num_heads"
+        assert params is not None, "Parameters for requantization must be provided"
 
         # Projections: shared across heads but produce concatenated head_dim output
         self.q_proj = nn.Linear(embed_dim, embed_dim)
@@ -172,29 +165,21 @@ class MultiheadITAWithRequant(nn.Module):
         self.out_proj = nn.Linear(embed_dim, embed_dim)
 
         # Requant parameters (shared per head for now; can be extended to per-head)
-        self.params = {
-            "mq": multiplier_q, "sq": shift_q,
-            "mk": multiplier_k, "sk": shift_k,
-            "mv": multiplier_v, "sv": shift_v,
-            "ma": multiplier_attn, "sa": shift_attn,
-            "mav": multiplier_av, "sav": shift_av,
-            "mo": multiplier_o, "so": shift_o,
-            "mf": multiplier_final, "sf": shift_final,
-            "zp": zero_point,
-        }
+        self.params = params
 
-    def requant_shift(self, x, mult, shift, zp=0):
+    def requant_shift(self, x, mult, shift):
         x = x * mult
         x = torch.div(x, 2 ** shift, rounding_mode='floor')
-        return torch.clamp(x + zp, -128, 127).to(torch.int8)
+        return torch.clamp(x + self.params["zp"], -128, 127).to(torch.int8)
 
     def forward(self, q_input, kv_input):
-        B, N, _ = q_input.shape
+        B_q, N_q, _ = q_input.shape
+        B_kv, N_kv, _ = kv_input.shape
 
         # Linear projections
-        Q = self.q_proj(q_input).reshape(B, N, self.num_heads, self.head_dim)
-        K = self.k_proj(kv_input).reshape(B, N, self.num_heads, self.head_dim)
-        V = self.v_proj(kv_input).reshape(B, N, self.num_heads, self.head_dim)
+        Q = self.q_proj(q_input).reshape(B_q, N_q, self.num_heads, self.head_dim)
+        K = self.k_proj(kv_input).reshape(B_kv, N_kv, self.num_heads, self.head_dim)
+        V = self.v_proj(kv_input).reshape(B_kv, N_kv, self.num_heads, self.head_dim)
 
         Q = self.requant_shift(Q.to(torch.int32), self.params["mq"], self.params["sq"])
         K = self.requant_shift(K.to(torch.int32), self.params["mk"], self.params["sk"])
@@ -210,11 +195,11 @@ class MultiheadITAWithRequant(nn.Module):
 
         attn_weights = ita_partial_max(attn_logits.float(), k=8)
 
-        context = torch.matmul(attn_weights, V.to(torch.int32))  # (B, H, N, D)
+        context = torch.matmul(attn_weights, V.to(torch.float32))  # (B, H, N, D)
         context = self.requant_shift(context, self.params["mav"], self.params["sav"])
 
         # Concatenate all heads
-        context = context.permute(0, 2, 1, 3).reshape(B, N, self.embed_dim)
+        context = context.permute(0, 2, 1, 3).reshape(B_q, N_q, self.embed_dim)
 
         output = self.out_proj(context.to(torch.float32))  # Use float proj for now
         output = self.requant_shift(output.to(torch.int32), self.params["mo"], self.params["so"])
@@ -225,14 +210,13 @@ class MultiheadITAWithRequant(nn.Module):
 def ita_partial_max(logits: torch.Tensor, k: int = 8) -> torch.Tensor:
     """
     Emulates ITAPartialMax by applying softmax to only the top-k elements along the last axis.
-    Remaining entries are masked to zero.
+    If k exceeds the dimension size, it is clipped.
     """
-    # logits: (B, N, N)
+    seq_len = logits.size(-1)
+    k = min(k, seq_len)  # Prevent topk from throwing
     topk_vals, topk_indices = torch.topk(logits, k, dim=-1)
     mask = torch.zeros_like(logits).scatter(-1, topk_indices, 1.0)
     masked_logits = logits * mask
-
-    # Apply softmax only over masked values
     weights = F.softmax(masked_logits, dim=-1)
     return weights
 
@@ -243,7 +227,7 @@ class ITASelfAttentionWrapper(nn.Module):
         self.cn1 = nn.Conv2d(in_channels=channels, out_channels=channels, kernel_size=reduction_ratio, stride= reduction_ratio)
         self.ln1 = nn.LayerNorm(channels)
         # Attention Parameters #
-        self.self_attn = MultiheadITAWithRequant(embed_dim=embed_dim, num_heads=num_heads, **itaparameters)
+        self.self_attn = MultiheadITAWithRequant(embed_dim=embed_dim, num_heads=num_heads, params=itaparameters)
         self.efficient_attn = efficient_attn
 
     def forward(self, x, H, W):
@@ -266,3 +250,30 @@ class ITASelfAttentionWrapper(nn.Module):
             # Perform attention with (x as query and kv)
             out = self.self_attn(x, x)
         return out.float()
+    
+class MiXITAEncoderLayer(nn.Module):
+    def __init__(self, in_channels, out_channels, patch_size, stride, padding, 
+                 n_layers, reduction_ratio, num_heads, expansion_factor, embed_dim, efficient_attn=True, itaparameters=None):
+        super().__init__()
+        self.patchMerge = OverlapPatchMerging(in_channels, out_channels, patch_size, stride, padding) # B N embed dim
+        #You might be wondering why I didn't used a cleaner implementation but the input to each forward function is different
+        self._attn = nn.ModuleList([ITASelfAttentionWrapper(channels=out_channels,
+                                                            embed_dim=embed_dim, 
+                                                            num_heads=num_heads, 
+                                                            reduction_ratio=reduction_ratio, 
+                                                            efficient_attn=efficient_attn, 
+                                                            itaparameters=itaparameters
+                                                            ) for _ in range(n_layers)])
+        self._ffn = nn.ModuleList([MixFFN(out_channels,expansion_factor) for _ in range(n_layers)])
+        self._lNorms = nn.ModuleList([nn.LayerNorm(out_channels) for _ in range(n_layers)])
+    
+    def forward(self, x):
+        B,C,H,W = x.shape
+        x,H,W = self.patchMerge(x) # B N embed dim (C)
+        for i in range(len(self._attn)):
+            x = x + self._attn[i].forward(x, H, W) #BNC
+            x = x + self._ffn[i].forward(x, H, W) #BNC
+            x = self._lNorms[i].forward(x) #BNC
+        # Reshape tokens back to spatial format for next stage: (B, N, C) → (B, C, H, W)
+        x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous() #BCHW
+        return x
