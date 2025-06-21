@@ -73,7 +73,7 @@ class LSTMNetVIT(nn.Module):
         out = self.nn_fc2(out)
         return out, h
 
-class LSTMNetITAConformer(nn.Module):
+class ITALSTM(nn.Module):
     """
     ITAConformer+LSTM Network
     """
@@ -240,7 +240,7 @@ if __name__ == '__main__':
     model = LSTMNetVIT().float()
     print("VITLSTM: ")
     print(sum(p.numel() for p in model.parameters() if p.requires_grad))
-    model2 = LSTMNetITAConformer().float()
+    model2 = ITALSTM().float()
     print("ITAConformerLSTM: ")
     print(sum(p.numel() for p in model2.parameters() if p.requires_grad))
     model3 = ViT().float()

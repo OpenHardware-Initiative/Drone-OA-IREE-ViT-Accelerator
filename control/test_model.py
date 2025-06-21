@@ -18,7 +18,7 @@ if __name__ == '__main__':
     lstm_vit_model = LSTMNetVIT().float()
 
     ita_conformer = ITAConformer(efficient_attn=True).float()
-    lstm_itaconformer_model = LSTMNetITAConformer(efficient_attn=True).float()
+    lstm_itaconformer_model = ITALSTM(efficient_attn=True).float()
 
     X = generate_dummy_input(traj_len=5)
 
