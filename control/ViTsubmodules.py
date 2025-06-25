@@ -190,6 +190,10 @@ class MultiheadITAWithRequant(nn.Module):
         K = K.permute(0, 2, 1, 3)
         V = V.permute(0, 2, 1, 3)
 
+        if torch.cuda.is_available() or torch.backends.mps.is_available():
+            Q = Q.to(torch.float32)
+            K = K.to(torch.float32)
+
         attn_logits = torch.matmul(Q, K.transpose(-2, -1))  # (B, H, N, N)
         attn_logits = self.requant_shift(attn_logits, self.params["ma"], self.params["sa"])
 
