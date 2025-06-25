@@ -18,6 +18,12 @@ from torch.utils.tensorboard import SummaryWriter
 import torch.nn as nn
 import torch.nn.functional as F
 
+# Accuracy metric: fraction of predictions within a tolerance of the target
+def compute_accuracy(pred, target, tolerance=0.05):
+    error = torch.norm(pred - target, dim=1)
+    correct = (error < tolerance).float()
+    return correct.mean().item()
+
 from dataloading import *
 sys.path.append(opj(os.path.dirname(os.path.abspath(__file__)), '../'))
 import model as model_library
@@ -213,6 +219,7 @@ class TRAINER:
                 self.validation(ep)
 
             ep_loss = 0
+            ep_acc = 0
             gradnorm = 0
 
             # shuffling order of training data trajectories here
@@ -234,6 +241,8 @@ class TRAINER:
                 cmd_norm = cmd_norm
                 loss = F.mse_loss(cmd_norm, pred)
                 ep_loss += loss
+                acc = compute_accuracy(pred, cmd_norm)
+                ep_acc += acc
                 loss.backward()
                 gradnorm += torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=torch.inf)
                 self.optimizer.step()
@@ -245,12 +254,14 @@ class TRAINER:
 
             ep_loss /= self.num_training_steps
             gradnorm /= self.num_training_steps
+            ep_acc /= self.num_training_steps
 
             self.mylogger(f'[TRAIN] Completed epoch {ep + 1}/{self.num_eps_trained + self.N_eps}, ep_loss = {ep_loss:.6f}, time = {time.time() - train_start:.2f}s, time/epoch = {(time.time() - train_start)/(ep + 1 - self.num_eps_trained):.2f}s')
 
             self.writer.add_scalar('train/loss', ep_loss, ep)
             self.writer.add_scalar('train/gradnorm', gradnorm, ep)
             self.writer.add_scalar('train/lr', new_lr, self.total_its)
+            self.writer.add_scalar('train/acc', ep_acc, ep)
             self.writer.flush()
 
         self.mylogger(f'[TRAIN] Training complete, total time = {time.time() - train_start:.2f}s')
@@ -266,6 +277,7 @@ class TRAINER:
         with torch.no_grad():
 
             ep_loss = 0
+            ep_acc = 0
 
             # starting index of trajectories in dataset
             val_traj_starts = np.cumsum(self.val_trajlength) - self.val_trajlength
@@ -287,11 +299,15 @@ class TRAINER:
                 cmd_norm = cmd / desvel # normalize each row by each desvel element
                 loss = F.mse_loss(cmd_norm, pred)
                 ep_loss += loss
+                acc = compute_accuracy(pred, cmd_norm)
+                ep_acc += acc
 
             ep_loss /= (it+1)
+            ep_acc /= (it+1)
 
             self.mylogger(f'[VAL] Completed validation, val_loss = {ep_loss:.6f}, time taken = {time.time() - val_start:.2f} s')
             self.writer.add_scalar('val/loss', ep_loss, ep)
+            self.writer.add_scalar('val/acc', ep_acc, ep)
 
 def argparsing():
 
