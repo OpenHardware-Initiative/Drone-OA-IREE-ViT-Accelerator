@@ -14,7 +14,7 @@ import numpy as np
 import torch
 from datetime import datetime
 import time
-from torch.utils.tensorboard import SummaryWriter
+import wandb
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -79,7 +79,9 @@ class TRAINER:
             wkspc_ctr += 1
         self.workspace = self.workspace + self.ws_suffix
         os.makedirs(self.workspace)
-        self.writer = SummaryWriter(self.workspace)
+        # Initialize Weights & Biases run
+        wandb.init(project=self.args.wandb_project, config=vars(self.args), dir=self.workspace, name=expname)
+        self.wandb = wandb
 
         # save ordered args, config, and a logfile to write stdout to
         if self.args is not None:
@@ -88,7 +90,7 @@ class TRAINER:
                 for arg in sorted(vars(self.args)):
                     attr = getattr(self.args, arg)
                     file.write('{} = {}\n'.format(arg, attr))
-                f = opj(self.workspace, 'config.txt')
+            f = opj(self.workspace, 'config.txt')
             with open(f, 'w') as file:
                 file.write(open(self.args.config, 'r').read())
         f = opj(self.workspace, 'log.txt')
@@ -258,11 +260,12 @@ class TRAINER:
 
             self.mylogger(f'[TRAIN] Completed epoch {ep + 1}/{self.num_eps_trained + self.N_eps}, ep_loss = {ep_loss:.6f}, time = {time.time() - train_start:.2f}s, time/epoch = {(time.time() - train_start)/(ep + 1 - self.num_eps_trained):.2f}s')
 
-            self.writer.add_scalar('train/loss', ep_loss, ep)
-            self.writer.add_scalar('train/gradnorm', gradnorm, ep)
-            self.writer.add_scalar('train/lr', new_lr, self.total_its)
-            self.writer.add_scalar('train/acc', ep_acc, ep)
-            self.writer.flush()
+            self.wandb.log({
+                'train/loss': ep_loss,
+                'train/gradnorm': gradnorm,
+                'train/lr': new_lr,
+                'train/acc': ep_acc
+            }, step=ep)
 
         self.mylogger(f'[TRAIN] Training complete, total time = {time.time() - train_start:.2f}s')
         self.save_model(ep)
@@ -306,8 +309,10 @@ class TRAINER:
             ep_acc /= (it+1)
 
             self.mylogger(f'[VAL] Completed validation, val_loss = {ep_loss:.6f}, time taken = {time.time() - val_start:.2f} s')
-            self.writer.add_scalar('val/loss', ep_loss, ep)
-            self.writer.add_scalar('val/acc', ep_acc, ep)
+            self.wandb.log({
+                'val/loss': ep_loss,
+                'val/acc': ep_acc
+            }, step=ep)
 
 def argparsing():
 
@@ -337,9 +342,9 @@ def argparsing():
     parser.add_argument('--save_model_freq', type=int, default=25, help='frequency with which to save model checkpoints')
     parser.add_argument('--val_freq', type=int, default=10, help='frequency with which to evaluate on validation set')
 
+    parser.add_argument('--wandb_project', type=str, default='Drone-ViT-HW-Accelerator', help='Weights & Biases project name')
     args = parser.parse_args()
     print(f'[CONFIGARGPARSE] Parsing args from config file {args.config}')
-
     return args
 
 if __name__ == '__main__':

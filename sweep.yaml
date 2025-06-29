@@ -1,0 +1,22 @@
+# sweep.yaml
+command:
+  - python
+  - control/training/train.py
+  - --config
+  - control/training/config/train.txt
+method: random                      # “grid”, “random” or “bayes”
+metric:
+  name: val/loss                   # the metric to optimise
+  goal: minimize
+parameters:
+  lr:
+    distribution: uniform
+    min: 0.00001
+    max: 0.001
+  lr_warmup_epochs:
+    distribution: int_uniform
+    min: 5
+    max: 10
+  model_type:
+    values: ['ITALSTM', 'ITAConformer']
+  # add any other hyperparams you’ve exposed via argparse…
