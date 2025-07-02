@@ -1,5 +1,5 @@
 device = cuda
-basedir = /Projects/Drone-ViT-HW-Accelerator
+basedir = /Projects/Drone-ViT-HW-Accelerator/control
 logdir = training/logs
 datadir = training/datasets
 

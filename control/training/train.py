@@ -14,9 +14,33 @@ import numpy as np
 import torch
 from datetime import datetime
 import time
-from torch.utils.tensorboard import SummaryWriter
+import wandb
 import torch.nn as nn
 import torch.nn.functional as F
+import random
+
+# Set random seed for reproducibility
+def set_seed(seed: int):
+    # ensure reproducible Python hashing
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    # CUDA-specific seeding and deterministic settings
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+    # enforce deterministic algorithms on all devices (includes MPS)
+    torch.use_deterministic_algorithms(True)
+
+
+# Accuracy metric: fraction of predictions within a tolerance of the target
+def compute_accuracy(pred, target, tolerance=0.05):
+    error = torch.norm(pred - target, dim=1)
+    correct = (error < tolerance).float()
+    return correct.mean().item()
 
 from dataloading import *
 sys.path.append(opj(os.path.dirname(os.path.abspath(__file__)), '../'))
@@ -73,7 +97,9 @@ class TRAINER:
             wkspc_ctr += 1
         self.workspace = self.workspace + self.ws_suffix
         os.makedirs(self.workspace)
-        self.writer = SummaryWriter(self.workspace)
+        # Initialize Weights & Biases run
+        wandb.init(project=self.args.wandb_project, config=vars(self.args), dir=self.workspace, name=expname)
+        self.wandb = wandb
 
         # save ordered args, config, and a logfile to write stdout to
         if self.args is not None:
@@ -82,7 +108,7 @@ class TRAINER:
                 for arg in sorted(vars(self.args)):
                     attr = getattr(self.args, arg)
                     file.write('{} = {}\n'.format(arg, attr))
-                f = opj(self.workspace, 'config.txt')
+            f = opj(self.workspace, 'config.txt')
             with open(f, 'w') as file:
                 file.write(open(self.args.config, 'r').read())
         f = opj(self.workspace, 'log.txt')
@@ -129,6 +155,8 @@ class TRAINER:
         else:
             self.mylogger(f'[SETUP] Invalid model_type {self.model_type}. Exiting.')
             exit()
+        
+        self.mylogger(f'[SETUP] Model {self.model_type} is selected')
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
@@ -213,6 +241,7 @@ class TRAINER:
                 self.validation(ep)
 
             ep_loss = 0
+            ep_acc = 0
             gradnorm = 0
 
             # shuffling order of training data trajectories here
@@ -234,6 +263,8 @@ class TRAINER:
                 cmd_norm = cmd_norm
                 loss = F.mse_loss(cmd_norm, pred)
                 ep_loss += loss
+                acc = compute_accuracy(pred, cmd_norm)
+                ep_acc += acc
                 loss.backward()
                 gradnorm += torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=torch.inf)
                 self.optimizer.step()
@@ -245,13 +276,16 @@ class TRAINER:
 
             ep_loss /= self.num_training_steps
             gradnorm /= self.num_training_steps
+            ep_acc /= self.num_training_steps
 
             self.mylogger(f'[TRAIN] Completed epoch {ep + 1}/{self.num_eps_trained + self.N_eps}, ep_loss = {ep_loss:.6f}, time = {time.time() - train_start:.2f}s, time/epoch = {(time.time() - train_start)/(ep + 1 - self.num_eps_trained):.2f}s')
 
-            self.writer.add_scalar('train/loss', ep_loss, ep)
-            self.writer.add_scalar('train/gradnorm', gradnorm, ep)
-            self.writer.add_scalar('train/lr', new_lr, self.total_its)
-            self.writer.flush()
+            self.wandb.log({
+                'train/loss': ep_loss,
+                'train/gradnorm': gradnorm,
+                'train/lr': new_lr,
+                'train/acc': ep_acc
+            }, step=ep)
 
         self.mylogger(f'[TRAIN] Training complete, total time = {time.time() - train_start:.2f}s')
         self.save_model(ep)
@@ -266,6 +300,7 @@ class TRAINER:
         with torch.no_grad():
 
             ep_loss = 0
+            ep_acc = 0
 
             # starting index of trajectories in dataset
             val_traj_starts = np.cumsum(self.val_trajlength) - self.val_trajlength
@@ -287,11 +322,17 @@ class TRAINER:
                 cmd_norm = cmd / desvel # normalize each row by each desvel element
                 loss = F.mse_loss(cmd_norm, pred)
                 ep_loss += loss
+                acc = compute_accuracy(pred, cmd_norm)
+                ep_acc += acc
 
             ep_loss /= (it+1)
+            ep_acc /= (it+1)
 
             self.mylogger(f'[VAL] Completed validation, val_loss = {ep_loss:.6f}, time taken = {time.time() - val_start:.2f} s')
-            self.writer.add_scalar('val/loss', ep_loss, ep)
+            self.wandb.log({
+                'val/loss': ep_loss,
+                'val/acc': ep_acc
+            }, step=ep)
 
 def argparsing():
 
@@ -321,13 +362,14 @@ def argparsing():
     parser.add_argument('--save_model_freq', type=int, default=25, help='frequency with which to save model checkpoints')
     parser.add_argument('--val_freq', type=int, default=10, help='frequency with which to evaluate on validation set')
 
+    parser.add_argument('--wandb_project', type=str, default='Drone-ViT-HW-Accelerator', help='Weights & Biases project name')
     args = parser.parse_args()
     print(f'[CONFIGARGPARSE] Parsing args from config file {args.config}')
-
     return args
 
 if __name__ == '__main__':
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    set_seed(42)  # Set a fixed seed for reproducibility
 
     args = argparsing()
     print(args)
