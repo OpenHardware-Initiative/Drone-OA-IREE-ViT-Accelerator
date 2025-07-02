@@ -17,6 +17,24 @@ import time
 import wandb
 import torch.nn as nn
 import torch.nn.functional as F
+import random
+
+# Set random seed for reproducibility
+def set_seed(seed: int):
+    # ensure reproducible Python hashing
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    # CUDA-specific seeding and deterministic settings
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+    # enforce deterministic algorithms on all devices (includes MPS)
+    torch.use_deterministic_algorithms(True)
+
 
 # Accuracy metric: fraction of predictions within a tolerance of the target
 def compute_accuracy(pred, target, tolerance=0.05):
@@ -137,6 +155,8 @@ class TRAINER:
         else:
             self.mylogger(f'[SETUP] Invalid model_type {self.model_type}. Exiting.')
             exit()
+        
+        self.mylogger(f'[SETUP] Model {self.model_type} is selected')
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
@@ -349,6 +369,7 @@ def argparsing():
 
 if __name__ == '__main__':
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    set_seed(42)  # Set a fixed seed for reproducibility
 
     args = argparsing()
     print(args)
