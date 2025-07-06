@@ -1,0 +1,557 @@
+//============================================================================//
+// Aggregate Statistics (static, whole-program)
+//============================================================================//
+//
+//   Constants: 1, estimated storage of 6726592 B (6.41 MiB)
+//   Variables: 0, (TBD) 0 B (0.00 MiB)
+//  D->H Syncs: 1
+// Submissions: 1, using cumulative 463744 B (0.44 MiB)
+//   DMA Fills: 7
+//  DMA Copies: 7
+// Collectives: 0
+//  Dispatches: 104
+// Async Calls: 0
+// Executables: 73, 30% reuse
+//
+//============================================================================//
+// Constants / Variables
+//============================================================================//
+//
+// TODO
+//
+//============================================================================//
+// Synchronization
+//============================================================================//
+//
+// TODO
+//
+//============================================================================//
+// Streams
+//============================================================================//
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.cmd.execute util.func
+//----------------------------------------------------------------------------//
+// builtin.module > util.func @main_graph$async > stream.cmd.execute
+//
+// TODO
+//
+//============================================================================//
+// Executables
+//============================================================================//
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_0::@main_graph$async_dispatch_0_slow_memcpy
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_0 > builtin.module > func.func @main_graph$async_dispatch_0_slow_memcpy
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_1::@main_graph$async_dispatch_1_conv_2d_nchw_fchw_1x32x15x23x1x7x7_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_1 > builtin.module > func.func @main_graph$async_dispatch_1_conv_2d_nchw_fchw_1x32x15x23x1x7x7_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_2::@main_graph$async_dispatch_2_elementwise_345x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_2 > builtin.module > func.func @main_graph$async_dispatch_2_elementwise_345x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_3::@main_graph$async_dispatch_3_elementwise_345x1x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_3 > builtin.module > func.func @main_graph$async_dispatch_3_elementwise_345x1x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_4::@main_graph$async_dispatch_4_transpose_345x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_4 > builtin.module > func.func @main_graph$async_dispatch_4_transpose_345x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_5::@main_graph$async_dispatch_5_conv_2d_nchw_fchw_1x32x1x2x32x8x8_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_5 > builtin.module > func.func @main_graph$async_dispatch_5_conv_2d_nchw_fchw_1x32x1x2x32x8x8_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_6::@main_graph$async_dispatch_6_elementwise_transpose_32x2_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_6 > builtin.module > func.func @main_graph$async_dispatch_6_elementwise_transpose_32x2_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_7::@main_graph$async_dispatch_7_elementwise_2x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_7 > builtin.module > func.func @main_graph$async_dispatch_7_elementwise_2x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_8::@main_graph$async_dispatch_8_batch_matmul_1x2x64x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_8 > builtin.module > func.func @main_graph$async_dispatch_8_batch_matmul_1x2x64x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_9::@main_graph$async_dispatch_9_elementwise_transpose_2x2x1x1x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_9 > builtin.module > func.func @main_graph$async_dispatch_9_elementwise_transpose_2x2x1x1x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_10::@main_graph$async_dispatch_10_batch_matmul_1x345x32x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_10 > builtin.module > func.func @main_graph$async_dispatch_10_batch_matmul_1x345x32x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_11::@main_graph$async_dispatch_11_matmul_like_1x345x2x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_11 > builtin.module > func.func @main_graph$async_dispatch_11_matmul_like_1x345x2x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_12::@main_graph$async_dispatch_12_softmax_345x2xf16_dispatch_tensor_store
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_12 > builtin.module > func.func @main_graph$async_dispatch_12_softmax_345x2xf16_dispatch_tensor_store
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_13::@main_graph$async_dispatch_13_batch_matmul_1x345x32x2_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_13 > builtin.module > func.func @main_graph$async_dispatch_13_batch_matmul_1x345x32x2_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_14::@main_graph$async_dispatch_14_batch_matmul_1x345x32x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_14 > builtin.module > func.func @main_graph$async_dispatch_14_batch_matmul_1x345x32x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_15::@main_graph$async_dispatch_15_batch_matmul_1x345x256x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_15 > builtin.module > func.func @main_graph$async_dispatch_15_batch_matmul_1x345x256x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_16::@main_graph$async_dispatch_16_elementwise_transpose_15x23x256_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_16 > builtin.module > func.func @main_graph$async_dispatch_16_elementwise_transpose_15x23x256_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_17::@main_graph$async_dispatch_17_conv_2d_ngchw_gfchw_1x32x8x15x23x8x3x3_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_17 > builtin.module > func.func @main_graph$async_dispatch_17_conv_2d_ngchw_gfchw_1x32x8x15x23x8x3x3_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_18::@main_graph$async_dispatch_18_elementwise_88320_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_18 > builtin.module > func.func @main_graph$async_dispatch_18_elementwise_88320_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_19::@main_graph$async_dispatch_19_batch_matmul_1x345x32x256_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_19 > builtin.module > func.func @main_graph$async_dispatch_19_batch_matmul_1x345x32x256_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_20::@main_graph$async_dispatch_20_elementwise_345x1x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_20 > builtin.module > func.func @main_graph$async_dispatch_20_elementwise_345x1x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_22::@main_graph$async_dispatch_22_elementwise_345x1x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_22 > builtin.module > func.func @main_graph$async_dispatch_22_elementwise_345x1x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_25::@main_graph$async_dispatch_25_elementwise_transpose_32x2_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_25 > builtin.module > func.func @main_graph$async_dispatch_25_elementwise_transpose_32x2_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_26::@main_graph$async_dispatch_26_elementwise_2x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_26 > builtin.module > func.func @main_graph$async_dispatch_26_elementwise_2x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_28::@main_graph$async_dispatch_28_elementwise_transpose_2x2x1x1x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_28 > builtin.module > func.func @main_graph$async_dispatch_28_elementwise_transpose_2x2x1x1x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_29::@main_graph$async_dispatch_29_batch_matmul_1x345x32x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_29 > builtin.module > func.func @main_graph$async_dispatch_29_batch_matmul_1x345x32x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_39::@main_graph$async_dispatch_39_elementwise_345x1x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_39 > builtin.module > func.func @main_graph$async_dispatch_39_elementwise_345x1x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_41::@main_graph$async_dispatch_41_generic_345x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_41 > builtin.module > func.func @main_graph$async_dispatch_41_generic_345x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_42::@main_graph$async_dispatch_42_elementwise_transpose_1x32x345_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_42 > builtin.module > func.func @main_graph$async_dispatch_42_elementwise_transpose_1x32x345_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_43::@main_graph$async_dispatch_43_slow_memcpy
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_43 > builtin.module > func.func @main_graph$async_dispatch_43_slow_memcpy
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_44::@main_graph$async_dispatch_44_conv_2d_nchw_fchw_1x64x8x12x32x3x3_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_44 > builtin.module > func.func @main_graph$async_dispatch_44_conv_2d_nchw_fchw_1x64x8x12x32x3x3_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_45::@main_graph$async_dispatch_45_elementwise_96x64_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_45 > builtin.module > func.func @main_graph$async_dispatch_45_elementwise_96x64_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_46::@main_graph$async_dispatch_46_elementwise_96x1x2x2x16_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_46 > builtin.module > func.func @main_graph$async_dispatch_46_elementwise_96x1x2x2x16_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_47::@main_graph$async_dispatch_47_transpose_96x64_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_47 > builtin.module > func.func @main_graph$async_dispatch_47_transpose_96x64_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_48::@main_graph$async_dispatch_48_conv_2d_nchw_fchw_1x64x2x3x64x4x4_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_48 > builtin.module > func.func @main_graph$async_dispatch_48_conv_2d_nchw_fchw_1x64x2x3x64x4x4_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_49::@main_graph$async_dispatch_49_elementwise_6x64_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_49 > builtin.module > func.func @main_graph$async_dispatch_49_elementwise_6x64_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_50::@main_graph$async_dispatch_50_batch_matmul_1x6x128x64_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_50 > builtin.module > func.func @main_graph$async_dispatch_50_batch_matmul_1x6x128x64_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_51::@main_graph$async_dispatch_51_elementwise_transpose_6x2x1x2x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_51 > builtin.module > func.func @main_graph$async_dispatch_51_elementwise_transpose_6x2x1x2x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_52::@main_graph$async_dispatch_52_batch_matmul_1x96x64x64_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_52 > builtin.module > func.func @main_graph$async_dispatch_52_batch_matmul_1x96x64x64_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_53::@main_graph$async_dispatch_53_elementwise_96x2x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_53 > builtin.module > func.func @main_graph$async_dispatch_53_elementwise_96x2x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_54::@main_graph$async_dispatch_54_matmul_like_2x96x6x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_54 > builtin.module > func.func @main_graph$async_dispatch_54_matmul_like_2x96x6x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_55::@main_graph$async_dispatch_55_softmax_2x96x6xf16_dispatch_tensor_store
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_55 > builtin.module > func.func @main_graph$async_dispatch_55_softmax_2x96x6xf16_dispatch_tensor_store
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_56::@main_graph$async_dispatch_56_matmul_like_96x2x32x6_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_56 > builtin.module > func.func @main_graph$async_dispatch_56_matmul_like_96x2x32x6_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_58::@main_graph$async_dispatch_58_batch_matmul_1x96x512x64_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_58 > builtin.module > func.func @main_graph$async_dispatch_58_batch_matmul_1x96x512x64_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_59::@main_graph$async_dispatch_59_elementwise_transpose_8x12x512_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_59 > builtin.module > func.func @main_graph$async_dispatch_59_elementwise_transpose_8x12x512_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_60::@main_graph$async_dispatch_60_conv_2d_ngchw_gfchw_1x64x8x8x12x8x3x3_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_60 > builtin.module > func.func @main_graph$async_dispatch_60_conv_2d_ngchw_gfchw_1x64x8x8x12x8x3x3_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_61::@main_graph$async_dispatch_61_elementwise_49152_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_61 > builtin.module > func.func @main_graph$async_dispatch_61_elementwise_49152_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_62::@main_graph$async_dispatch_62_batch_matmul_1x96x64x512_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_62 > builtin.module > func.func @main_graph$async_dispatch_62_batch_matmul_1x96x64x512_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_63::@main_graph$async_dispatch_63_elementwise_96x1x2x2x16_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_63 > builtin.module > func.func @main_graph$async_dispatch_63_elementwise_96x1x2x2x16_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_65::@main_graph$async_dispatch_65_elementwise_96x1x2x2x16_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_65 > builtin.module > func.func @main_graph$async_dispatch_65_elementwise_96x1x2x2x16_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_67::@main_graph$async_dispatch_67_conv_2d_nchw_fchw_1x64x2x3x64x4x4_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_67 > builtin.module > func.func @main_graph$async_dispatch_67_conv_2d_nchw_fchw_1x64x2x3x64x4x4_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_68::@main_graph$async_dispatch_68_elementwise_6x64_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_68 > builtin.module > func.func @main_graph$async_dispatch_68_elementwise_6x64_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_70::@main_graph$async_dispatch_70_elementwise_transpose_6x2x1x2x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_70 > builtin.module > func.func @main_graph$async_dispatch_70_elementwise_transpose_6x2x1x2x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_72::@main_graph$async_dispatch_72_elementwise_96x2x32_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_72 > builtin.module > func.func @main_graph$async_dispatch_72_elementwise_96x2x32_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_82::@main_graph$async_dispatch_82_elementwise_96x1x2x2x16_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_82 > builtin.module > func.func @main_graph$async_dispatch_82_elementwise_96x1x2x2x16_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_84::@main_graph$async_dispatch_84_generic_96x64_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_84 > builtin.module > func.func @main_graph$async_dispatch_84_generic_96x64_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_85::@main_graph$async_dispatch_85_elementwise_transpose_1x2x8x2x12x16_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_85 > builtin.module > func.func @main_graph$async_dispatch_85_elementwise_transpose_1x2x8x2x12x16_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_86::@main_graph$async_dispatch_86_elementwise_broadcast_12288_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_86 > builtin.module > func.func @main_graph$async_dispatch_86_elementwise_broadcast_12288_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_87::@main_graph$async_dispatch_87_slow_memcpy
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_87 > builtin.module > func.func @main_graph$async_dispatch_87_slow_memcpy
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_88::@main_graph$async_dispatch_88_conv_2d_nchw_fchw_1x12x16x24x48x3x3_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_88 > builtin.module > func.func @main_graph$async_dispatch_88_conv_2d_nchw_fchw_1x12x16x24x48x3x3_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_89::@main_graph$async_dispatch_89_matmul_transpose_b_1x512x4608_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_89 > builtin.module > func.func @main_graph$async_dispatch_89_matmul_transpose_b_1x512x4608_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_90::@main_graph$async_dispatch_90_elementwise
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_90 > builtin.module > func.func @main_graph$async_dispatch_90_elementwise
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_91::@main_graph$async_dispatch_91_matmul_transpose_b_1x128x517_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_91 > builtin.module > func.func @main_graph$async_dispatch_91_matmul_transpose_b_1x128x517_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_92::@main_graph$async_dispatch_92_matmul_transpose_b_1x128x517_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_92 > builtin.module > func.func @main_graph$async_dispatch_92_matmul_transpose_b_1x128x517_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_93::@main_graph$async_dispatch_93_matmul_transpose_b_1x128x517_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_93 > builtin.module > func.func @main_graph$async_dispatch_93_matmul_transpose_b_1x128x517_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_94::@main_graph$async_dispatch_94_matmul_transpose_b_1x128x517_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_94 > builtin.module > func.func @main_graph$async_dispatch_94_matmul_transpose_b_1x128x517_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_95::@main_graph$async_dispatch_95_matmul_transpose_b_1x128x128_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_95 > builtin.module > func.func @main_graph$async_dispatch_95_matmul_transpose_b_1x128x128_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_96::@main_graph$async_dispatch_96_matmul_transpose_b_1x128x128_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_96 > builtin.module > func.func @main_graph$async_dispatch_96_matmul_transpose_b_1x128x128_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_97::@main_graph$async_dispatch_97_matmul_transpose_b_1x128x128_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_97 > builtin.module > func.func @main_graph$async_dispatch_97_matmul_transpose_b_1x128x128_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_98::@main_graph$async_dispatch_98_matmul_transpose_b_1x128x128_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_98 > builtin.module > func.func @main_graph$async_dispatch_98_matmul_transpose_b_1x128x128_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_101::@main_graph$async_dispatch_101_matmul_transpose_b_1x128x128_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_101 > builtin.module > func.func @main_graph$async_dispatch_101_matmul_transpose_b_1x128x128_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_102::@main_graph$async_dispatch_102_matmul_transpose_b_1x128x128_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_102 > builtin.module > func.func @main_graph$async_dispatch_102_matmul_transpose_b_1x128x128_f16
+//
+// TODO
+//
+//----------------------------------------------------------------------------//
+// stream.executable.export @main_graph$async_dispatch_103::@main_graph$async_dispatch_103_matmul_transpose_b_1x3x128_f16
+//----------------------------------------------------------------------------//
+// builtin.module > stream.executable @main_graph$async_dispatch_103 > builtin.module > func.func @main_graph$async_dispatch_103_matmul_transpose_b_1x3x128_f16
+//
+// TODO
+//
