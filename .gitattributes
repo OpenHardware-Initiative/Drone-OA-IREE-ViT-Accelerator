@@ -1,1 +1,5 @@
-models/** filter=lfs diff=lfs merge=lfs -text
+models/mlir/** filter=lfs diff=lfs merge=lfs -text
+models/onnx/** filter=lfs diff=lfs merge=lfs -text
+models/profiling/** filter=lfs diff=lfs merge=lfs -text
+models/torch/** filter=lfs diff=lfs merge=lfs -text
+models/vmbf/** filter=lfs diff=lfs merge=lfs -text
