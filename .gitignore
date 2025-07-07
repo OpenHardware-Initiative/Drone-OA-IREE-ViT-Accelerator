@@ -174,4 +174,4 @@ cython_debug/
 .pypirc
 
 # Docker tar file for sysroot
-./docker/iot-*
+.docker/iot-*
