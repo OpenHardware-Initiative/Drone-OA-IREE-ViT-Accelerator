@@ -1,0 +1,34 @@
+{
+    "name": "ARM Cortex-A53 Cross-Compile Environment",
+  
+    // Point to the Docker image we built.
+    // VS Code will automatically build the Dockerfile if the image doesn't exist.
+    "image": "cortex-a53-builder:latest",
+  
+    // Mount your project folder into the container's workspace
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+    "workspaceFolder": "/workspace",
+  
+    // Recommended extensions for C++/Python/MLIR development
+    "customizations": {
+      "vscode": {
+        "extensions": [
+          "ms-vscode.cpptools-extension-pack",
+          "ms-python.python",
+          "llvm-vs-code-extensions.vscode-mlir",
+          "ms-azure-tools.vscode-docker"
+        ]
+      }
+    },
+  
+    // Keep the container running even after closing VS Code
+    "shutdownAction": "none",
+  
+    // Run commands after the container is created
+    "postCreateCommand": "echo 'Container created. Your project files are available at /workspace.'",
+  
+    // Run as the same user that owns the workspace folder on the host machine
+    // This avoids file permission issues.
+    "remoteUser": "root"
+  }
+  
