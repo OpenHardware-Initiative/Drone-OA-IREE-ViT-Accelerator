@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torchvision.transforms import ToTensor
 
-from model import LSTMNetVIT
+from models.model import LSTMNetVIT
 from fpga_link import unpack_frame, pack_reply, PORT
 
 def calculate_final_velocity(raw_output, desired_vel, pos_x):

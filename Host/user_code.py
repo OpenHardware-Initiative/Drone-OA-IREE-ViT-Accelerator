@@ -3,7 +3,6 @@
 from utils import AgileCommandMode, AgileCommand
 from scipy.spatial.transform import Rotation
 import cv2
-import rospy
 import numpy as np
 import torch
 from torchvision.transforms import ToTensor
@@ -11,16 +10,8 @@ from torchvision.transforms import ToTensor
 import glob, os, sys, time
 from os.path import join as opj
 
-import os, socket
-#from fpga_link import pack_frame, unpack_reply, empty_hidden, PORT
-
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from model import *
-
-# flig to UDP-based inference when this env var is set
-USE_FPGA_LINK = bool(int(os.getenv("USE_FPGA_LINK", 0)))
-if USE_FPGA_LINK:
-    _sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    _sock.settimeout(0.03)
 
 # 3D line determined by two points (x1, y1, z1) and (x2, y2, z2)
 # sphere determined by a center point (x3, y3, z3) and radius r
@@ -83,52 +74,31 @@ def compute_command_vision_based(state, orig_img, prev_img, desiredVel, trained_
     img = cv2.resize(orig_img, (w, h))
     img2 = orig_img.copy() # used for generating debugimg
     img = ToTensor()(np.array(img))
-    
-    if USE_FPGA_LINK:
-        # 1) prepare the depth image as uint8 (we'll optimize later)
-        depth_arr = img.numpy().squeeze()                    # (60×90) float32 ∈ [0,1]
-        depth_u8  = np.round(depth_arr * 255).astype(np.uint8)
 
-        # 2) init hidden-state if first frame
-        if hidden_state is None:
-            hidden_state = empty_hidden()
-
-        # 3) send & receive (blocking)
-        pkt = pack_frame(depth_u8, float(desiredVel), q, hidden_state)
-        _sock.sendto(pkt, ("127.0.0.1", PORT))
-        reply, _ = _sock.recvfrom(8192)                     # blocks until server replies
-
-        # 4) unpack
-        x, hidden_state = unpack_reply(reply)
-        x = x.copy()                                        # make it writable
-
-    
-    else:
-        if 'LSTMNet' in trained_model.__class__.__name__:
-            if trained_model.__class__.__name__ == 'LSTMNet':
-                trained_model.lstm.num_layers = 2
-                trained_model.lstm.hidden_size = 395
-            elif trained_model.__class__.__name__ == 'LSTMNetVIT':
-                trained_model.lstm.num_layers = 3
-                trained_model.lstm.hidden_size = 128
-            elif trained_model.__class__.__name__ == 'UNetConvLSTMNet':
-                trained_model.lstm.num_layers = 2
-                trained_model.lstm.hidden_size = 200
-            else:
-                raise Exception ("Incorrect Model specified!!")
-            if state.pos[0] < 0.5 or hidden_state is None: 
-                hidden_state = (torch.zeros(trained_model.lstm.num_layers, trained_model.lstm.hidden_size).float(), torch.zeros(trained_model.lstm.num_layers, trained_model.lstm.hidden_size).float())
-            with torch.no_grad():
-                x, hidden_state = trained_model([img.view(1, 1, h, w), torch.tensor(desiredVel).view(1, 1).float(), torch.tensor(q).view(1,-1).float() ,hidden_state])
-
+    if 'LSTMNet' in trained_model.__class__.__name__:
+        if trained_model.__class__.__name__ == 'LSTMNet':
+            trained_model.lstm.num_layers = 2
+            trained_model.lstm.hidden_size = 395
+        elif trained_model.__class__.__name__ == 'LSTMNetVIT':
+            trained_model.lstm.num_layers = 3
+            trained_model.lstm.hidden_size = 128
+        elif trained_model.__class__.__name__ == 'UNetConvLSTMNet':
+            trained_model.lstm.num_layers = 2
+            trained_model.lstm.hidden_size = 200
         else:
+            raise Exception ("Incorrect Model specified!!")
+        if state.pos[0] < 0.5 or hidden_state is None: 
+            hidden_state = (torch.zeros(trained_model.lstm.num_layers, trained_model.lstm.hidden_size).float(), torch.zeros(trained_model.lstm.num_layers, trained_model.lstm.hidden_size).float())
+        with torch.no_grad():
+            x, hidden_state = trained_model([img.view(1, 1, h, w), torch.tensor(desiredVel).view(1, 1).float(), torch.tensor(q).view(1,-1).float() ,hidden_state])
 
-            with torch.no_grad():
-                x, hidden_state = trained_model([img.view(1, 1, h, w), torch.tensor(desiredVel).view(1, 1).float(), torch.tensor(q).view(1,-1).float()])
+    else:
 
-        x = x.squeeze().detach().numpy()
+        with torch.no_grad():
+            x, hidden_state = trained_model([img.view(1, 1, h, w), torch.tensor(desiredVel).view(1, 1).float(), torch.tensor(q).view(1,-1).float()])
 
-    
+
+    x = x.squeeze().detach().numpy()
     x[0] = np.clip(x[0], -1, 1)
     x = x/np.linalg.norm(x)
     command.velocity = x*desiredVel
