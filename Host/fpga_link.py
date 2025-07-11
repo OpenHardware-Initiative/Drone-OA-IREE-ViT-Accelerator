@@ -5,7 +5,7 @@ import numpy as np
 
 # Network Configuration
 PORT = 10001
-FPGA_IP = "127.0.0.1" # IMPORTANT: Change this to your FPGA's IP address
+FPGA_IP = "10.42.0.14" # IMPORTANT: Change this to your FPGA's IP address
 
 # Data format for HOST -> FPGA (No hidden state)
 # - Image: 60x90 uint8 = 5400 bytes
