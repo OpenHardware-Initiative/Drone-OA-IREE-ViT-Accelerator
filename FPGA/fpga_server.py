@@ -27,17 +27,25 @@ def main():
     # --- 3. Main Network and Inference Loop ---
     while True:
         try:
+            print("\n[SERVER] Waiting for packet...")
             packet, client_address = sock.recvfrom(8192)
+            print(f"[SERVER] Received {len(packet)} bytes from {client_address}")
+            print("[SERVER] Unpacking frame...")
             img_u8, desired_vel, pos_x, quat = unpack_frame(packet)
+            print("[SERVER] Unpack complete. Image shape:", img_u8.shape)
             img_u8 = img_u8.copy()
+            print("[DEBUG] Data unpacked. Calling inference engine...")
             raw_output, new_hidden_state = run_inference_step(model, hidden_state, img_u8, desired_vel, quat)
             hidden_state = new_hidden_state
+            print("[DEBUG] Inference complete. Sending reply...")
             final_velocity_cmd = calculate_final_velocity(raw_output, desired_vel, pos_x)
             reply_packet = pack_reply(final_velocity_cmd)
             sock.sendto(reply_packet, client_address)
 
         except Exception as e:
             print(f"An error occurred in the server loop: {e}")
+            import traceback
+            traceback.print_exc()
             hidden_state = (
                 torch.zeros(3, 128, device=next(model.parameters()).device),
                 torch.zeros(3, 128, device=next(model.parameters()).device)
