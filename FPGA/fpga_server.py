@@ -15,7 +15,7 @@ def main():
 
     # --- 1. Initialize the Model ---
     # The weights file should be in a predictable location relative to this script.
-    model_path = "./models/torch/ViTLSTM_model.pth" # This path is now relative to this file's location.
+    model_path = "./models/ViTLSTM_model.pth" # This path is now relative to this file's location.
     model, hidden_state = initialize_model(model_path)
 
     # --- 2. Setup Network Server ---
@@ -29,6 +29,7 @@ def main():
         try:
             packet, client_address = sock.recvfrom(8192)
             img_u8, desired_vel, pos_x, quat = unpack_frame(packet)
+            img_u8 = img_u8.copy()
             raw_output, new_hidden_state = run_inference_step(model, hidden_state, img_u8, desired_vel, quat)
             hidden_state = new_hidden_state
             final_velocity_cmd = calculate_final_velocity(raw_output, desired_vel, pos_x)

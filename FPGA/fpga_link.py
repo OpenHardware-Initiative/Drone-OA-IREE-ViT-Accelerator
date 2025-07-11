@@ -32,7 +32,7 @@ def unpack_frame(packet):
     """Unpacks data received on the FPGA. (No hidden state)"""
     img_bytes, desired_vel, pos_x, quat_bytes = struct.unpack(PACKET_FMT_SEND, packet)
 
-    img = np.frombuffer(img_bytes, dtype=np.uint8).reshape(60, 90)
+    img = np.frombuffer(img_bytes, dtype=np.uint8).reshape(60, 90).copy()
     quat = np.frombuffer(quat_bytes, dtype=np.float32)
 
     return img, desired_vel, pos_x, quat
