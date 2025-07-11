@@ -4,6 +4,8 @@
 import socket
 import numpy as np
 import torch
+import time
+import sys
 
 # --- CORRECTED LOCAL IMPORTS ---
 # These files are now in the same directory, so we import directly.
@@ -22,25 +24,37 @@ def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_address = ('0.0.0.0', PORT)
     sock.bind(server_address)
-    print(f"Network server is listening for packets on port {PORT}...")
+    print(f"Network server is running. Listening for packets on port {PORT}...")
+    print("-----------------------------------------")
+    print("-----------------------------------------")
+    print("  Inference Time  |      Velocity Command (X, Y, Z)")
+    print("-----------------------------------------")
+
+    log_interval = 1.0  # Log data once per second
+    last_log_time = time.time()
+    inference_times = []
 
     # --- 3. Main Network and Inference Loop ---
     while True:
         try:
-            print("\n[SERVER] Waiting for packet...")
+            
             packet, client_address = sock.recvfrom(8192)
-            print(f"[SERVER] Received {len(packet)} bytes from {client_address}")
-            print("[SERVER] Unpacking frame...")
+            
             img_u8, desired_vel, pos_x, quat = unpack_frame(packet)
-            print("[SERVER] Unpack complete. Image shape:", img_u8.shape)
             img_u8 = img_u8.copy()
-            print("[DEBUG] Data unpacked. Calling inference engine...")
+            
+            inference_start_time = time.time()
             raw_output, new_hidden_state = run_inference_step(model, hidden_state, img_u8, desired_vel, quat)
+            inference_end_time = time.time()
             hidden_state = new_hidden_state
-            print("[DEBUG] Inference complete. Sending reply...")
+            
             final_velocity_cmd = calculate_final_velocity(raw_output, desired_vel, pos_x)
             reply_packet = pack_reply(final_velocity_cmd)
             sock.sendto(reply_packet, client_address)
+
+            inference_duration_ms = (inference_end_time - inference_start_time) * 1000
+            vx, vy, vz = final_velocity_cmd
+            print(f"   {inference_duration_ms:7.2f} ms   |   Vx: {vx:6.2f}, Vy: {vy:6.2f}, Vz: {vz:6.2f}")
 
         except Exception as e:
             print(f"An error occurred in the server loop: {e}")
