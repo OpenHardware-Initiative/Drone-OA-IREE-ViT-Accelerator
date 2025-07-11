@@ -8,7 +8,7 @@ import torch
 # --- CORRECTED LOCAL IMPORTS ---
 # These files are now in the same directory, so we import directly.
 from fpga_link import unpack_frame, pack_reply, PORT
-from fpga_inference_engine import initialize_model, run_inference_step, calculate_final_velocity
+from fpga_inference_server import initialize_model, run_inference_step, calculate_final_velocity
 
 def main():
     print("--- ViT+LSTM FPGA Inference Server ---")
