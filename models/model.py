@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import LSTM
 import torch.nn.utils.spectral_norm as spectral_norm
-from ViTsubmodules import *
+from models.ViTsubmodules import *
 
 def refine_inputs(X):
 

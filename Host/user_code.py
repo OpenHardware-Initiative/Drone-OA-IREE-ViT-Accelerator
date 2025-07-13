@@ -1,17 +1,14 @@
 #!/usr/bin/python3
 
-from utils import AgileCommandMode, AgileCommand
-from scipy.spatial.transform import Rotation
 import cv2
 import numpy as np
 import torch
 from torchvision.transforms import ToTensor
+from scipy.spatial.transform import Rotation
 
-import glob, os, sys, time
-from os.path import join as opj
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from model import *
+# Project-specific imports (These will work because run_competition.py sets the path)
+from Host.utils import AgileCommandMode, AgileCommand
+from models.model import *
 
 # 3D line determined by two points (x1, y1, z1) and (x2, y2, z2)
 # sphere determined by a center point (x3, y3, z3) and radius r
