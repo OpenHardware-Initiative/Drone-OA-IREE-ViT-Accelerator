@@ -1,52 +1,52 @@
-# fpga_link.py
-import struct, time, itertools
+# envtest/ros/fpga_link.py (Version 2 - Stateful Server)
+
+import struct
 import numpy as np
-import torch
 
-SOF      = 0xA55A1234
-PORT     = 5555
-FRAME_H  = 60
-FRAME_W  = 90
-HIDDEN_SHAPE = (3, 128)          # matches LSTMNetVIT
-SEQ_GEN  = itertools.count()     # global monotonous counter
+# Network Configuration
+PORT = 10001
+FPGA_IP = "10.42.0.14" # IMPORTANT: Change this to your FPGA's IP address
 
-# ---------- pack / unpack ------------------------------------------------ #
-def pack_frame(depth_u8, des_vel, quat, hidden_state):
-    """
-    depth_u8      : np.uint8 array of shape (60, 90)
-    des_vel       : float
-    quat          : iterable of 4 floats  (w, x, y, z)
-    hidden_state  : (h, c) tuple of torch Tensors  shape (3,128)
-    returns bytes
-    """
-    h, c = (_to_fp16(x) for x in hidden_state)
-    header = struct.pack(
-        "<IIdf4f", SOF, next(SEQ_GEN), time.time(), des_vel, *quat
-    )
-    return b"".join([header,
-                     depth_u8.tobytes(order="C"),
-                     h.tobytes(order="C"),
-                     c.tobytes(order="C")])
+# Data format for HOST -> FPGA (No hidden state)
+# - Image: 60x90 uint8 = 5400 bytes
+# - Desired Velocity: float32 = 4 bytes
+# - Position X: float32 = 4 bytes
+# - Quaternion: 4x float32 = 16 bytes
+PACKET_FMT_SEND = '>5400sff16s' # Note: Quat is now 16s
 
-def unpack_reply(buf):
-    """
-    buf -- raw bytes sent back by server
-    layout  : 3 × float32  + 2 × hidden_state(fp16)
-    returns : vel (np.float32[3]),  (h, c) torch.float32
-    """
-    vel = np.frombuffer(buf[:12], dtype=np.float32)
-    h   = np.frombuffer(buf[12:12+HIDDEN_SHAPE[0]*HIDDEN_SHAPE[1]*2],
-                        dtype=np.float16).astype(np.float32).reshape(HIDDEN_SHAPE)
-    c   = np.frombuffer(buf[12+len(h.tobytes()):],
-                        dtype=np.float16).astype(np.float32).reshape(HIDDEN_SHAPE)
-    return vel, (torch.from_numpy(h), torch.from_numpy(c))
+# Data format for FPGA -> HOST (No hidden state)
+# - Velocity Command: 3x float32 = 12 bytes
+PACKET_FMT_REPLY = '>12s'
 
-# ---------- helpers ------------------------------------------------------ #
-def empty_hidden(device="cpu"):
-    z = torch.zeros(*HIDDEN_SHAPE, dtype=torch.float32, device=device)
-    return (z.clone(), z.clone())
+def pack_frame(depth_u8, desired_vel, pos_x, quat):
+    """Packs data for sending to the FPGA. (No hidden state)"""
+    img_bytes = depth_u8.tobytes()
+    quat_bytes = quat.astype(np.float32).tobytes()
 
-def _to_fp16(t):
-    if t is None:
-        t = torch.zeros(*HIDDEN_SHAPE)
-    return t.cpu().numpy().astype(np.float16, copy=False)
+    assert len(img_bytes) == 5400
+    assert len(quat_bytes) == 16
+
+    return struct.pack(PACKET_FMT_SEND, img_bytes, desired_vel, pos_x, quat_bytes)
+
+def unpack_frame(packet):
+    """Unpacks data received on the FPGA. (No hidden state)"""
+    img_bytes, desired_vel, pos_x, quat_bytes = struct.unpack(PACKET_FMT_SEND, packet)
+
+    img = np.frombuffer(img_bytes, dtype=np.uint8).reshape(60, 90).copy()
+    quat = np.frombuffer(quat_bytes, dtype=np.float32)
+
+    return img, desired_vel, pos_x, quat
+
+
+def pack_reply(velocity_cmd):
+    """Packs the reply data for sending back to the host. (No hidden state)"""
+    vel_bytes = velocity_cmd.astype(np.float32).tobytes()
+    assert len(vel_bytes) == 12
+    return struct.pack(PACKET_FMT_REPLY, vel_bytes)
+
+
+def unpack_reply(packet):
+    """Unpacks the reply data received on the host. (No hidden state)"""
+    (vel_bytes,) = struct.unpack(PACKET_FMT_REPLY, packet) # Note tuple unpacking
+    velocity = np.frombuffer(vel_bytes, dtype=np.float32)
+    return velocity

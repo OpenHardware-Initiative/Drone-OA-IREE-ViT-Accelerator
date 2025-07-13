@@ -1,16 +1,13 @@
-# fpga_inference_server.py (Version 2 - Stateful)
+# fpga_inference_server.py (Modified to be a callable module)
 
-import socket
 import numpy as np
 import torch
 from torchvision.transforms import ToTensor
+from models.model import LSTMNetVIT # Path will be fixed with sys.path
 
-from model import LSTMNetVIT
-from fpga_link import unpack_frame, pack_reply, PORT
-
+# This function is now standalone, but still part of this file
 def calculate_final_velocity(raw_output, desired_vel, pos_x):
-    # This function remains the same
-    vel_cmd = raw_output
+    vel_cmd = raw_output.copy()
     vel_cmd[0] = np.clip(vel_cmd[0], -1, 1)
     norm = np.linalg.norm(vel_cmd)
     if norm > 0:
@@ -23,9 +20,8 @@ def calculate_final_velocity(raw_output, desired_vel, pos_x):
         final_velocity[0] = max(min_xvel_cmd, (pos_x / hardcoded_ctl_threshold) * desired_vel)
     return final_velocity
 
-def main():
-    # --- Load Model ---
-    model_path = "/path/to/your/ViTLSTM_model.pth" # IMPORTANT: Update this path
+def initialize_model(model_path):
+    """Loads the model and creates the initial hidden state."""
     print(f"Loading model from {model_path}...")
     device = torch.device("cpu")
     model = LSTMNetVIT().to(device).float()
@@ -33,53 +29,26 @@ def main():
     model.eval()
     print("Model loaded successfully.")
 
-    # --- Stateful Variable ---
-    # The hidden state is now managed entirely by the server.
-    # It's initialized once to zeros.
     hidden_state = (
         torch.zeros(3, 128, device=device),
         torch.zeros(3, 128, device=device)
     )
     print("Internal hidden state initialized.")
+    return model, hidden_state
 
-    # --- Setup Network ---
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(('0.0.0.0', PORT))
-    print(f"Listening for packets on port {PORT}...")
+def run_inference_step(model, hidden_state, img_u8, desired_vel, quat):
+    """Runs one step of inference and returns the raw output and new state."""
+    device = next(model.parameters()).device
+    
+    # Prepare tensors
+    img_tensor = ToTensor()(img_u8).view(1, 1, 60, 90).float().to(device)
+    vel_tensor = torch.tensor(desired_vel).view(1, 1).float().to(device)
+    quat_tensor = torch.tensor(quat).view(1, -1).float().to(device)
 
-    # --- Main Loop ---
-    while True:
-        try:
-            packet, addr = sock.recvfrom(8192)
+    # Run Inference
+    with torch.no_grad():
+        raw_output_tensor, new_hidden_state = model([img_tensor, vel_tensor, quat_tensor, hidden_state])
 
-            # 1. Unpack data (no hidden state received)
-            img_u8, desired_vel, pos_x, quat = unpack_frame(packet)
-
-            # 2. Prepare tensors
-            img_tensor = ToTensor()(img_u8).view(1, 1, 60, 90).float().to(device)
-            vel_tensor = torch.tensor(desired_vel).view(1, 1).float().to(device)
-            quat_tensor = torch.tensor(quat).view(1, -1).float().to(device)
-
-            # 3. Run Inference using the *internal* hidden_state
-            with torch.no_grad():
-                raw_output_tensor, h_out = model([img_tensor, vel_tensor, quat_tensor, hidden_state])
-
-            # 4. IMPORTANT: Update the internal hidden_state for the next cycle
-            hidden_state = h_out
-
-            # 5. Post-process
-            raw_output_np = raw_output_tensor.squeeze().detach().cpu().numpy()
-            final_velocity_cmd = calculate_final_velocity(raw_output_np, desired_vel, pos_x)
-
-            # 6. Pack and send reply (no hidden state sent)
-            reply_packet = pack_reply(final_velocity_cmd)
-            sock.sendto(reply_packet, addr)
-
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            # Optionally reset state on error
-            hidden_state = (torch.zeros(3, 128, device=device), torch.zeros(3, 128, device=device))
-            print("Internal hidden state has been reset due to an error.")
-
-if __name__ == "__main__":
-    main()
+    raw_output_np = raw_output_tensor.squeeze().detach().cpu().numpy()
+    
+    return raw_output_np, new_hidden_state
