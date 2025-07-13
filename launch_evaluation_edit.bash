@@ -119,7 +119,7 @@ do
   python3 "$MONOREPO_ROOT/Host/run_competition.py" $run_competition_args \
     --model_type ViTLSTM \
     --model_path "$MONOREPO_ROOT/models/ViTLSTM_model.pth" \
-    --des_vel 5.0 &
+    --des_vel 2.5 &
   COMP_PID="$!"
 
   cd -
