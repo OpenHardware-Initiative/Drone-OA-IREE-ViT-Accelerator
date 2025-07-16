@@ -12,9 +12,8 @@ import glob, os, sys, time
 from os.path import join as opj
 
 import os, socket
-from fpga_link import pack_frame, unpack_reply, empty_hidden, PORT
+#from fpga_link import pack_frame, unpack_reply, empty_hidden, PORT
 
-sys.path.append(opj(os.path.dirname(os.path.abspath(__file__)), '../../models'))
 from model import *
 
 # flig to UDP-based inference when this env var is set
