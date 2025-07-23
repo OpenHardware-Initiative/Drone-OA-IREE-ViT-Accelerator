@@ -11,13 +11,7 @@ import torch.nn.functional as F
 from torch.nn import LSTM
 import torch.nn.utils.spectral_norm as spectral_norm
 
-<<<<<<< Updated upstream
 from ITA_ViTsubmodules import *
-=======
-from models.ITA_ViTSubmodules import MiXITAEncoderLayer
-
-from third_party.vitfly.models.ViTsubmodules import *
->>>>>>> Stashed changes
 from third_party.vitfly.models.model import refine_inputs
 
 
