@@ -14,6 +14,7 @@ import torch.nn.functional as F
 from torch.nn import LSTM
 import torch.nn.utils.spectral_norm as spectral_norm
 from models.ViTsubmodules import *
+from models.ITAConformerLSTM import ITALSTM
 
 def refine_inputs(X):
 

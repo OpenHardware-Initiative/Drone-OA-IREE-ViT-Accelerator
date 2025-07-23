@@ -11,7 +11,13 @@ import torch.nn.functional as F
 from torch.nn import LSTM
 import torch.nn.utils.spectral_norm as spectral_norm
 
+<<<<<<< Updated upstream
 from ITA_ViTsubmodules import *
+=======
+from models.ITA_ViTSubmodules import MiXITAEncoderLayer
+
+from third_party.vitfly.models.ViTsubmodules import *
+>>>>>>> Stashed changes
 from third_party.vitfly.models.model import refine_inputs
 
 
@@ -75,7 +81,7 @@ class ITALSTM(nn.Module):
         # Each out[i]: (T, C, H, W)
         # Flatten per timestep: (T, 12, 16, 24) -> (T, 4608)
         # Concat additional inputs: (T, 512) + (1, T, 1) + (1, T, 4) => (T, 517)
-        out = torch.cat([out, X[1].squeeze(0)/10, X[2].squeeze(0)], dim=1).float()
+        out = torch.cat([out, X[1]/10, X[2]], dim=1).float()
         if len(X) > 3:
             out, h = self.lstm(out, X[3])
         else:
