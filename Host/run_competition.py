@@ -5,6 +5,8 @@ import sys
 repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, repo_root)
 
+vitfly_models_path = os.path.join(repo_root, 'third_party', 'vitfly', 'models')
+sys.path.insert(0, vitfly_models_path)
 
 # Now, import everything else
 import argparse
@@ -98,7 +100,11 @@ class AgilePilotNode:
             elif model_type == 'ViT':
                 self.model = ViT().to(self.device).float()
             elif model_type == 'ViTLSTM':
-                self.model = LSTMNetVIT().to(self.device).float()                
+                self.model = LSTMNetVIT().to(self.device).float()
+            elif model_type == 'ITALSTM':
+                # NOTE: You must use the correct Python Class name here.
+                # It is likely defined in models/ITAConformerLSTM.py
+                self.model = ITALSTM().to(self.device).float()                
             else:
                 print(f'[RUN_COMPETITION] Invalid model_type {model_type}. Exiting.')
                 exit()
