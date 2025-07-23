@@ -176,6 +176,7 @@ cython_debug/
 # Docker tar file for sysroot
 .docker/iot-*
 
-training/
+training/logs
+training/datasets/
 
 .python-version

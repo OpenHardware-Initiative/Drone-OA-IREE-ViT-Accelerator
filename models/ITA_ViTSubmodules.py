@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from third_party.vitfly.models.ViTsubmodules import OverlapPatchMerging, EfficientSelfAttention, MixFFN
 class MultiheadITAWithRequant(nn.Module):
     def __init__(self, embed_dim, num_heads, params=None):
         super().__init__()
