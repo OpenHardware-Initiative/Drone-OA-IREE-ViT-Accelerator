@@ -117,9 +117,9 @@ do
 
   # Run the competition host script using its full, absolute path
   python3 "$MONOREPO_ROOT/Host/run_competition.py" $run_competition_args \
-    --model_type ViTLSTM \
-    --model_path "$MONOREPO_ROOT/models/ViTLSTM_model.pth" \
-    --des_vel 2.5 &
+    --model_type ITALSTM \
+    --model_path "$MONOREPO_ROOT/models/pretrained_models/ITALSTM.pth" \
+    --des_vel 5 &
   COMP_PID="$!"
 
   cd -

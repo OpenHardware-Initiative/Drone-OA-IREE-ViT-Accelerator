@@ -32,6 +32,9 @@ MANIFEST
 *.manifest
 *.spec
 
+# Ignore training set
+train_set/ 
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt

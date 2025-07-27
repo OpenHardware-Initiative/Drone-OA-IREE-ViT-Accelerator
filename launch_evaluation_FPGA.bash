@@ -111,12 +111,12 @@ do
   # changed to fit monorepo
   MONOREPO_ROOT=$PWD
 
-  # Run the evaluation_node.py in a subshell to handle its local config file
+  # Run the evaluation_node.py in a subshell to run_competition_hosthandle its local config file
   (cd "$MONOREPO_ROOT/third_party/vitfly/envtest/ros/" && python3 evaluation_node.py ${datetime}_N$i &)
   PY_PID="$!"
 
   # Run the competition host script using its full, absolute path
-  python3 "$MONOREPO_ROOT/Host/run_competition_host.py" $run_competition_args --des_vel 5.0 &
+  python3 "$MONOREPO_ROOT/Host/run_competition_FPGA+HOST.py" $run_competition_args --des_vel 5.0 &
   COMP_PID="$!"
 
   cd -
