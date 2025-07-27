@@ -81,18 +81,23 @@ class QuantReadyITALSTM(nn.Module):
         X = refine_inputs(X)
         x = X[0]
 
+        x = self.quant(x)
+
         encoded_features = self._encode(x)
         out = self._decode(encoded_features)
         # Each out[i]: (T, C, H, W)
         # Flatten per timestep: (T, 12, 16, 24) -> (T, 4608)
         # Concat additional inputs: (T, 512) + (1, T, 1) + (1, T, 4) => (T, 517)
         x1_scaled = X[1] / 10.0
-        out = self.dequant(self.concat.cat([out, x1_scaled, X[2]], dim=1).float())
+        #out = self.dequant(self.concat.cat([out, x1_scaled, X[2]], dim=1).float())
+        out = self.concat.cat([out, x1_scaled, X[2]], dim=1).float()
+        out = out.unsqueeze(1)  # Ensure correct shape for LSTM in QAT mode
         if len(X) > 3:
             out, h = self.lstm(out, X[3])
         else:
             out, h = self.lstm(out)
+        out = out.squeeze(1)  # Restore original shape
         
-        out = self.quant(out)
+        #out = self.quant(out)
         out = self.nn_fc2(out)
         return self.dequant(out), h

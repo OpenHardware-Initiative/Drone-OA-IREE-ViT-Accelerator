@@ -26,15 +26,14 @@ class QATTrainer(TRAINER):
             self.model.load_state_dict(ckpt, strict=False)
 
         # QAT configuration
-        self.model.qconfig = torch.quantization.get_default_qat_qconfig('fbgemm')
-        self.model.fuse_model()  # no-op stub at top level / propagates to children
+        self.model.qconfig = torch.quantization.get_default_qat_qconfig('qnnpack')
+        self.model.fuse_model()  
         torch.quantization.prepare_qat(self.model, inplace=True)
 
         # Recreate optimizer for QAT
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
         # debug and see if the model is correctly initialized
-
         
         self.mylogger(f"[QAT] Model is QuantReadyITALSTM: {isinstance(self.model, QuantReadyITALSTM)}")
 

@@ -32,6 +32,9 @@ class QuantReadyLSTMNetViT(nn.Module):
 
         self.concat = nnq.FloatFunctional()
 
+    def fuse_model(self):
+        pass
+
     def forward(self, X):
 
         X = refine_inputs(X)

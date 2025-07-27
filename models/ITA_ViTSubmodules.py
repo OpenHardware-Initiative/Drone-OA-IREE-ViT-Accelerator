@@ -36,10 +36,6 @@ class MultiheadITAWithRequant(nn.Module):
         K = self.k_proj(kv_input).reshape(B_kv, N_kv, self.num_heads, self.head_dim)
         V = self.v_proj(kv_input).reshape(B_kv, N_kv, self.num_heads, self.head_dim)
 
-        Q = self.requant_shift(Q.to(torch.int32), self.params["mq"], self.params["sq"])
-        K = self.requant_shift(K.to(torch.int32), self.params["mk"], self.params["sk"])
-        V = self.requant_shift(V.to(torch.int32), self.params["mv"], self.params["sv"])
-
         # Attention computation per head
         Q = Q.permute(0, 2, 1, 3)  # (B, H, N, D)
         K = K.permute(0, 2, 1, 3)
@@ -50,19 +46,16 @@ class MultiheadITAWithRequant(nn.Module):
             K = K.to(torch.float32)
 
         attn_logits = torch.matmul(Q, K.transpose(-2, -1))  # (B, H, N, N)
-        attn_logits = self.requant_shift(attn_logits, self.params["ma"], self.params["sa"])
 
-        attn_weights = ita_partial_max(attn_logits.float(), k=8)
+        attn_weights = F.softmax(attn_logits, dim=-1)
+        #attn_weights = ita_partial_max(attn_logits.float(), k=8)
 
         context = torch.matmul(attn_weights, V.to(torch.float32))  # (B, H, N, D)
-        context = self.requant_shift(context, self.params["mav"], self.params["sav"])
 
         # Concatenate all heads
         context = context.permute(0, 2, 1, 3).reshape(B_q, N_q, self.embed_dim)
 
-        output = self.out_proj(context.to(torch.float32))  # Use float proj for now
-        output = self.requant_shift(output.to(torch.int32), self.params["mo"], self.params["so"])
-        final = self.requant_shift(output.to(torch.int32), self.params["mf"], self.params["sf"])
+        final = self.out_proj(context.to(torch.float32))  # Use float proj for now
 
         return final
 
