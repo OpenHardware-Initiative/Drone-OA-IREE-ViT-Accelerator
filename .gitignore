@@ -181,5 +181,6 @@ cython_debug/
 
 training/logs
 training/datasets/
+training/data/*
 
 .python-version
