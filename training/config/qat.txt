@@ -1,12 +1,17 @@
+# QAT configuration for a short test run (1 epoch)
 
+# --- Set epochs and save frequency to 1 ---
+N_eps = 1
+save_model_freq = 1
 
-# Quantization-aware training configuration
+# --- (Optional but Recommended) Use a small subset of data to speed it up ---
+short = 10 # Use only 10 trajectory folders from the dataset
 
 # Device and paths
-device = cpu
-basedir = /Users/denizonat/REPOS/neuroTUM/Drone-ViT-HW-Accelerator
+device = cpu # Use 'cpu' if you have a GPU, otherwise 'cpu'
+basedir = /home/coppholl/Projects/Drone-OA-IREE-ViT-Accelerator 
 logdir = training/logs
-datadir = training/datasets
+datadir = training
 
 # Dataset settings
 dataset = data
@@ -14,18 +19,23 @@ short = 0
 val_split = 0.2
 
 # Model and checkpoint
-model_type = ViTLSTM
-load_checkpoint = False
+# model_type is ignored by qat_ita_trainer.py, which always uses ITALSTMNetVIT
+model_type = ITALSTMNetVIT 
+
+# --- BEST PRACTICE: Start QAT from a pre-trained float model ---
 load_checkpoint_qat = False
-checkpoint_path = /Users/denizonat/REPOS/neuroTUM/Drone-ViT-HW-Accelerator/models/pretrained_models/checkpoints_for_qat/ITALSTM.pth
+checkpoint_path = /path/to/your/best_float_model.pth # UPDATE THIS
 
 # Training hyperparameters
-lr = 1e-4
-N_eps = 100
+lr = 1e-4 # Use a smaller learning rate for fine-tuning
+N_eps = 30 # Fine-tuning usually requires fewer epochs
 lr_warmup_epochs = 5
-lr_decay = False
-save_model_freq = 25
-val_freq = 10
+lr_decay = True
+save_model_freq = 10
+val_freq = 5
 
 # Workspace suffix for QAT runs
-ws_suffix = _qat
+ws_suffix = _qat_rom_scratch
+
+# REplace later
+model_type = ViTLSTM
