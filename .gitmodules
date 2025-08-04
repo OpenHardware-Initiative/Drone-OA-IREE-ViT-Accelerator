@@ -4,6 +4,3 @@
 [submodule "third_party/ITA-FPGA"]
 	path = third_party/ITA-FPGA
 	url = https://github.com/OpenHardware-Initiative/ITA-FPGA.git
-[submodule "third_party/vitfly"]
-	path = third_party/vitfly
-	url = https://github.com/anish-bhattacharya/vitfly.git
