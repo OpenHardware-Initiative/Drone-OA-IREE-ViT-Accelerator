@@ -182,5 +182,7 @@ cython_debug/
 
 training/logs
 training/datasets/
+training/small_data
+data_*
 
 .python-version

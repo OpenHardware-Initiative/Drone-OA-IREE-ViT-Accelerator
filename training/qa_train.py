@@ -43,6 +43,8 @@ class QATTrainer(TRAINER):
 
         # --- QAT setup with HARDWARE-COMPLIANT symmetric qconfig ---
         self.mylogger("[QAT] Configuring model for Quantization-Aware Training...")
+        
+        torch.backends.quantized.engine = 'qnnpack'
 
         # 1. Define the qconfig for ITA-compliant symmetric quantization.
         # This configuration forces zero_point=0 to match the hardware.
@@ -63,6 +65,11 @@ class QATTrainer(TRAINER):
         self.model.qconfig = ita_symmetric_qconfig
         self.model.tokenizer.qconfig = None
         
+        for block in self.model.norm1_layers:
+            block.qconfig = None
+        for block in self.model.norm2_layers:
+            block.qconfig = None
+        
         # 3. Fuse and prepare the model for QAT.
         self.mylogger("[QAT] Fusing model layers (if any)...")
         self.model.fuse_model() # Note: Your fuse_model() method is currently empty.
@@ -76,6 +83,7 @@ class QATTrainer(TRAINER):
     def finalize(self):
         """Converts the trained QAT model to a fully quantized integer model and saves it."""
         self.mylogger("[QAT] Finalizing training and converting to integer model...")
+        self.model.cpu()
         self.model.eval()
         torch.quantization.convert(self.model, inplace=True)
         out_path = os.path.join(self.workspace, "model_quantized_final.pth")
