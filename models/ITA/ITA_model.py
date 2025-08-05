@@ -13,7 +13,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
 # Import standard layers
-from models.testing.ITA_layers import OverlapPatchMerging, ITASelfAttention, ITAFeedForward
+from models.ITA.ITA_layers import OverlapPatchMerging, ITASelfAttention, ITAFeedForward
 
 def refine_inputs(X):
     """Pre-processes the input data to the required shape."""

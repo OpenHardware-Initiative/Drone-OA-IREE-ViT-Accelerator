@@ -13,9 +13,9 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
 # --- Project-Specific Imports ---
-from models.testing.ITA_model import ITALSTMNetVIT
-from models.testing.export.ITA_model_export import ITALSTMNetVIT_Export
-from models.testing.ITA_layers import ITASoftmax
+from models.ITA.ITA_model import ITALSTMNetVIT
+from models.ITA.export.ITA_model_export import ITALSTMNetVIT_Export
+from models.ITA.ITA_layers import ITASoftmax
 from third_party.ITA_FPGA.PyITA.util import (
     write_matrix, to_hex, pack_hex_24b, pack_array_8b_to_word, pack_8b_to_word,
     write_vector_mem_hex, write_matrix_mem_hex, split_matrix, generate_matrix_mem,
@@ -97,6 +97,7 @@ class HardwareGoldenModel:
         S = self.p['S']
 
         # Attention Block Simulation
+        print(f">>>>>>>>> Shape of Q_in: {self.tensors['Q_in'].shape}, dtype: {self.tensors['Q_in'].dtype}")
         self.tensors['Qp'] = np.matmul(self.tensors['Q_in'], self.tensors['Wq']) + np.tile(self.tensors['Bq'], [1, S, 1])
         self.tensors['Qp_requant'] = self._np_requantize(self.tensors['Qp'][0], **self.hw_params['q_proj'])[np.newaxis, :, :]
 
@@ -495,6 +496,7 @@ def export_all_vectors(checkpoint_path):
         
         with torch.no_grad():
             q_in_torch = model.quant_attention[block_idx](x_float)
+            print(f">>>>>>>>>> Precision of Q_in: {q_in_torch.dtype}, Scale: {model.quant_attention[block_idx].scale.item()}, Shape: {q_in_torch.shape}")
             attn_out_torch, _ = attn_block(q_in_torch, H, W)
             attn_out_float = model.dequant_attention[block_idx](attn_out_torch)
             res1_float = x_float + attn_out_float

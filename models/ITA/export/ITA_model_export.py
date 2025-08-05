@@ -13,12 +13,12 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
 # Import export-specific layers and the standard tokenizer
-from models.testing.ITA_layers import OverlapPatchMerging
-from models.testing.export.ITA_layers_export import ITASelfAttention_Export, ITAFeedForward_Export
+from models.ITA.ITA_layers import OverlapPatchMerging
+from models.ITA.export.ITA_layers_export import ITASelfAttention_Export, ITAFeedForward_Export
 
 # Import the EXPORT versions of the layers
-from models.testing.export.ITA_layers_export  import ITASelfAttention_Export, ITAFeedForward_Export
-from models.testing.ITA_layers import OverlapPatchMerging
+from models.ITA.export.ITA_layers_export  import ITASelfAttention_Export, ITAFeedForward_Export
+from models.ITA.ITA_layers import OverlapPatchMerging
 
 
 def refine_inputs(X):
