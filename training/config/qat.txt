@@ -4,12 +4,12 @@
 N_eps = 1
 save_model_freq = 1
 
-# --- (Optional but Recommended) Use a small subset of data to speed it up ---
+# --- (Optional but Recommended for Testing) Use a small subset of data to speed it up ---
 short = 10 # Use only 10 trajectory folders from the dataset
 
 # Device and paths
-device = cpu # Use 'cpu' if you have a GPU, otherwise 'cpu'
-basedir = /home/coppholl/Projects/Drone-OA-IREE-ViT-Accelerator 
+device = cuda # Use 'cpu' if you have a GPU, otherwise 'cpu'
+basedir = /Projects/Agus/Drone-OA-IREE-ViT-Accelerator 
 logdir = training/logs
 datadir = training
 
@@ -28,7 +28,7 @@ checkpoint_path = /path/to/your/best_float_model.pth # UPDATE THIS
 
 # Training hyperparameters
 lr = 1e-4 # Use a smaller learning rate for fine-tuning
-N_eps = 30 # Fine-tuning usually requires fewer epochs
+N_eps = 5 # Fine-tuning usually requires fewer epochs
 lr_warmup_epochs = 5
 lr_decay = True
 save_model_freq = 10
