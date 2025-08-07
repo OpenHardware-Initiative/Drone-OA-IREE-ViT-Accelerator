@@ -13,13 +13,15 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
 # --- Project-Specific Imports ---
+from third_party.ITA_FPGA.PyITA.ITA import Transformer
 from models.ITA.ITA_model import ITALSTMNetVIT
 from models.ITA.export.ITA_model_export import ITALSTMNetVIT_Export
 from models.ITA.ITA_layers import ITASoftmax
+from third_party.ITA_FPGA.PyITA.softmax import streamingPartialSoftmax
 from third_party.ITA_FPGA.PyITA.util import (
     write_matrix, to_hex, pack_hex_24b, pack_array_8b_to_word, pack_8b_to_word,
     write_vector_mem_hex, write_matrix_mem_hex, split_matrix, generate_matrix_mem,
-    write_matrix_mem
+    write_matrix_mem, requantize
 )
 
 # ==============================================================================
@@ -54,11 +56,14 @@ class HardwareGoldenModel:
         self.p = model_dims
         self.hw_params = hw_params
         self.tensors = {}
-        # Use the PyTorch implementation of ITASoftmax for bit-accuracy with the reference
-        self.softmax_sim = ITASoftmax()
         print("✨ Golden Model Initialized.")
 
     def _np_requantize(self, x, mult, shift, add=0):
+        """
+        Bit-accurate requantization simulation.
+        This function already matches the logic of PyITA's `gelu_requantize`.
+        """
+        # This implementation is correct for simulating integer arithmetic
         x = x.astype(np.float64) * mult
         x = np.floor(x / (2**shift) + 0.5) + add
         return np.clip(x, -128, 127).astype(np.int8)
@@ -84,7 +89,7 @@ class HardwareGoldenModel:
 
         q_out = _i_gelu(x_in, q_1, q_b, q_c)
         # The output of the GELU approximation is also requantized
-        return self._np_requantize(q_out, mult, shift, add)
+        return requantize(q_out, mult, shift, add)
 
     def load_parameters(self, block_tensors):
         """Loads the extracted weights, biases, and inputs for the current block."""
@@ -95,41 +100,76 @@ class HardwareGoldenModel:
         """Executes the full hardware simulation for one transformer block."""
         print("  ✨ Recomputing all intermediates with hardware-like arithmetic...")
         S = self.p['S']
+        H = self.p['H']
 
         # Attention Block Simulation
         print(f">>>>>>>>> Shape of Q_in: {self.tensors['Q_in'].shape}, dtype: {self.tensors['Q_in'].dtype}")
-        self.tensors['Qp'] = np.matmul(self.tensors['Q_in'], self.tensors['Wq']) + np.tile(self.tensors['Bq'], [1, S, 1])
-        self.tensors['Qp_requant'] = self._np_requantize(self.tensors['Qp'][0], **self.hw_params['q_proj'])[np.newaxis, :, :]
+        self.tensors['Qp'] = np.matmul(self.tensors['Q_in'], self.tensors['Wq']) + np.tile(self.tensors['Bq'], [H, S, 1])
+        self.tensors['Qp_requant'] = requantize(self.tensors['Qp'],
+                                                np.array([self.hw_params['q_proj']['mult']]),
+                                                np.array([self.hw_params['q_proj']['shift']]),
+                                                np.array([self.hw_params['q_proj']['add']]))
 
-        self.tensors['Kp'] = np.matmul(self.tensors['K_in'], self.tensors['Wk']) + np.tile(self.tensors['Bk'], [1, S, 1])
-        self.tensors['Kp_requant'] = self._np_requantize(self.tensors['Kp'][0], **self.hw_params['k_proj'])[np.newaxis, :, :]
+        self.tensors['Kp'] = np.matmul(self.tensors['K_in'], self.tensors['Wk']) + np.tile(self.tensors['Bk'], [H, S, 1])
+        self.tensors['Kp_requant'] = requantize(self.tensors['Kp'],
+                                                np.array([self.hw_params['k_proj']['mult']]),
+                                                np.array([self.hw_params['k_proj']['shift']]),
+                                                np.array([self.hw_params['k_proj']['add']]))
 
-        self.tensors['Vp'] = np.matmul(self.tensors['V_in'], self.tensors['Wv']) + np.tile(self.tensors['Bv'], [1, S, 1])
-        self.tensors['Vp_requant'] = self._np_requantize(self.tensors['Vp'][0], **self.hw_params['v_proj'])[np.newaxis, :, :]
+        self.tensors['Vp'] = np.matmul(self.tensors['V_in'], self.tensors['Wv']) + np.tile(self.tensors['Bv'], [H, S, 1])
+        self.tensors['Vp_requant'] = requantize(self.tensors['Vp'],
+                                                np.array([self.hw_params['v_proj']['mult']]),
+                                                np.array([self.hw_params['v_proj']['shift']]),
+                                                np.array([self.hw_params['v_proj']['add']]))
+
 
         A_matmul = np.matmul(self.tensors['Qp_requant'].astype(np.int32), self.tensors['Kp_requant'].transpose(0, 2, 1).astype(np.int32))
-        self.tensors['A_requant'] = self._np_requantize(A_matmul[0], **self.hw_params['qk_matmul'])[np.newaxis, :, :]
+        self.tensors['A_requant'] = requantize(A_matmul,
+                                                np.array([self.hw_params['qk_matmul']['mult']]),
+                                                np.array([self.hw_params['qk_matmul']['shift']]),
+                                                np.array([self.hw_params['qk_matmul']['add']]))
         
-        a_requant_torch = torch.from_numpy(self.tensors['A_requant'])
-        a_requant_4d = a_requant_torch.unsqueeze(1)
+        self.tensors['A_partial_softmax'] = streamingPartialSoftmax(self.tensors['A_requant'], integerize=True)
+        
+        #a_requant_torch = torch.from_numpy(self.tensors['A_requant'])
+        #a_requant_4d = a_requant_torch.unsqueeze(1)
         
         # Use torch ITASoftmax on numpy array for bit-accuracy
-        self.tensors['A_partial_softmax'] = self.softmax_sim(a_requant_4d).numpy()
+        #self.tensors['A_partial_softmax'] = self.softmax_sim(a_requant_4d).numpy()
 
         O_soft_matmul = np.matmul(self.tensors['A_partial_softmax'].astype(np.int32), self.tensors['Vp_requant'].astype(np.int32))
-        self.tensors['O_soft_requant'] = self._np_requantize(O_soft_matmul[0], **self.hw_params['av_matmul'])[np.newaxis, :, :]
+        self.tensors['O_soft_requant'] = requantize(O_soft_matmul,
+                                                     np.array([self.hw_params['av_matmul']['mult']] * H),
+                                                     np.array([self.hw_params['av_matmul']['shift']] * H),
+                                                     np.array([self.hw_params['av_matmul']['add']] * H))
 
         Out_soft_matmul = np.matmul(self.tensors['O_soft_requant'], self.tensors['Wo']) + np.tile(self.tensors['Bo'], [1, S, 1])
-        self.tensors['Out_soft_requant'] = self._np_requantize(Out_soft_matmul[0], **self.hw_params['out_proj'])[np.newaxis, :, :]
+        Out_soft_matmul = np.matmul(self.tensors['O_soft_requant'], self.tensors['Wo']) + np.tile(self.tensors['Bo'], [H, S, 1])
+        self.tensors['Out_soft_requant'] = requantize(Out_soft_matmul,
+                                                       np.array([self.hw_params['out_proj']['mult']] * H),
+                                                       np.array([self.hw_params['out_proj']['shift']] * H),
+                                                       np.array([self.hw_params['out_proj']['add']] * H))
 
         # FFN Block Simulation
         self.tensors['FFp'] = np.matmul(self.tensors['FF_in'], self.tensors['Wff']) + np.tile(self.tensors['Bff'], [1, S, 1])
-        self.tensors['FFp_requant'] = self._np_requantize(self.tensors['FFp'][0], **self.hw_params['ffn1'])[np.newaxis, :, :]
+        self.tensors['FFp_requant'] = requantize(self.tensors['FFp'],
+                                                    np.array([self.hw_params['ffn1']['mult']]),
+                                                    np.array([self.hw_params['ffn1']['shift']]),
+                                                    np.array([self.hw_params['ffn1']['add']]))
 
-        self.tensors['relu'] = np.maximum(0, self.tensors['FFp_requant'])
+
+        pre_requant_relu = np.maximum(0, self.tensors['FFp_requant'])
+        
+        self.tensors['relu'] = requantize(pre_requant_relu,
+                                           np.array([self.hw_params['relu']['rqs_mul']]),
+                                           np.array([self.hw_params['relu']['rqs_shift']]),
+                                           np.array([self.hw_params['relu']['rqs_add']]))
 
         self.tensors['FF2p'] = np.matmul(self.tensors['relu'], self.tensors['Wff2']) + np.tile(self.tensors['Bff2'], [1, S, 1])
-        self.tensors['FF2p_requant'] = self._np_requantize(self.tensors['FF2p'][0], **self.hw_params['ffn2'])[np.newaxis, :, :]
+        self.tensors['FF2p_requant'] = requantize(self.tensors['FF2p'],
+                                                    np.array([self.hw_params['ffn2']['mult']]),
+                                                    np.array([self.hw_params['ffn2']['shift']]),
+                                                    np.array([self.hw_params['ffn2']['add']]))
         
         print("  ✅ Golden model simulation complete.")
         return self.tensors
@@ -138,148 +178,138 @@ class HardwareGoldenModel:
 # CLASS 2: FILE WRITER
 # Encapsulates all file I/O logic, ensuring formats match the Verilog testbenches.
 # ==============================================================================
+
+# TODO: We could implement a whole GoldenModel + FileWriter class just by reusing the Transformer class
+#       from PyITA, but this would require some refactoring of the ITA model code
+
 class FileWriter:
     """
     Handles all file generation for hardware verification, ensuring formats
-    match the reference ITA.py script exactly.
+    match the reference ITA.py script exactly by using its own utility functions.
     """
     def __init__(self, tensors, hw_params, model_dims, base_path):
         """
         Initializes the FileWriter.
 
         Args:
-            tensors (dict): Dictionary of all simulated tensors (inputs, weights, intermediates).
-            hw_params (dict): Dictionary of hardware parameters (mult, shift, add for each step).
-            model_dims (dict): Dictionary of model dimensions (S, E, P, F, H).
-            base_path (str): The root directory for the output files for a specific block.
+            tensors (dict): Dictionary of ALL tensors (inputs, weights, and intermediates).
+            hw_params (dict): Dictionary of hardware parameters.
+            model_dims (dict): Dictionary of model dimensions.
+            base_path (str): The root directory for the output files.
         """
         self.t = tensors
         self.hw = hw_params
         self.p = model_dims
         self.paths = {
-            "base": base_path,
-            "hwpe": os.path.join(base_path, "hwpe"),
-            "mempool": os.path.join(base_path, "mempool"),
-            "standalone": os.path.join(base_path, "standalone"),
-            "snitch": os.path.join(base_path, "snitch-cluster")
+            "base": os.path.join(base_path, ""),
+            "hwpe": os.path.join(base_path, "hwpe", ""),
+            "mempool": os.path.join(base_path, "mempool", ""),
+            "standalone": os.path.join(base_path, "standalone", ""),
+            "snitch": os.path.join(base_path, "snitch-cluster", "")
         }
         print(f"--- 💾 Initialized FileWriter for path: ./{base_path} ---")
+
+        # 💡 --- TILING HELPER ---
+        # Create a lightweight instance of the reference Transformer. Its only
+        # purpose is to give us access to the tiler_* methods, which contain
+        # the complex logic for formatting the standalone test files.
+        print("  🔧 Initializing Tiling Helper from ITA.Transformer...")
+        self.ita_tiler = Transformer(
+            S=self.p['S'], P=self.p['P'], E=self.p['E'],
+            F=self.p['F'], H=self.p['H'], path=base_path
+        )
 
     def create_directories(self):
         """Creates all necessary subdirectories for the output files."""
         for path in self.paths.values():
             os.makedirs(path, exist_ok=True)
         print("  ✅ Created all output directories.")
-
-    # --------------------------------------------------------------------
-    # Private Helper Methods for Writing
-    # --------------------------------------------------------------------
-
-    def _write_flat_row(self, data, filename):
-        """Writes a list or 1D array as a single space-separated row."""
-        path = os.path.join(self.paths['base'], filename)
-        np.savetxt(path, np.array([data]), fmt='%d', delimiter=' ')
-
-    def _write_standalone_tensor(self, tensor, name):
-        """Writes a tensor to the standalone folder, one value per line."""
-        path = os.path.join(self.paths['standalone'], f"{name}.txt")
-        # Standalone files expect a flattened 2D layout.
-        if tensor.ndim > 2:
-            tensor = tensor.reshape(-1, tensor.shape[-1])
-        with open(path, "w") as f:
-            np.savetxt(f, tensor, fmt='%d')
-
-    def _write_hwpe_tensor(self, tensor_np, filename):
-        """Writes a tensor to the hwpe folder, packed into 32-bit hex."""
-        filepath = os.path.join(self.paths['hwpe'], f'{filename}.txt')
-        if os.path.exists(filepath):
-             os.remove(filepath)
         
-        # Squeeze to 2D, tile into 64x64 blocks, and pack to hex
-        squeezed_tensor = tensor_np.squeeze()
-        tiles = split_matrix(squeezed_tensor, block_shape=(64, 64))
-        packed_hex = pack_array_8b_to_word(tiles, hex_string=False)
-        write_matrix_mem_hex(packed_hex, filename, self.paths['hwpe'])
-
     # --------------------------------------------------------------------
     # Public Methods for Writing Different File Categories
     # --------------------------------------------------------------------
 
     def write_global_params(self):
-        """Writes the top-level parameter files (RQS, GELU)."""
-        # GELU Params
-        self._write_flat_row([self.hw['relu']['q_b']], "GELU_B.txt")
-        self._write_flat_row([self.hw['relu']['q_c']], "GELU_C.txt")
-        self._write_flat_row([self.hw['relu']['q_1']], "GELU_ONE.txt")
-        self._write_flat_row([self.hw['relu']['rqs_add']], "activation_requant_add.txt")
-        self._write_flat_row([self.hw['relu']['rqs_mul']], "activation_requant_mult.txt")
-        self._write_flat_row([self.hw['relu']['rqs_shift']], "activation_requant_shift.txt")
+        """Writes the top-level parameter files using the reference `write_matrix`."""
+        base_path = os.path.join(self.paths["base"], '')
+        
+        # GELU Params - wrap scalars in a 2D array to match reference format
+        write_matrix(np.array([[self.hw['relu']['q_b']]]), "GELU_B", base_path)
+        write_matrix(np.array([[self.hw['relu']['q_c']]]), "GELU_C", base_path)
+        write_matrix(np.array([[self.hw['relu']['q_1']]]), "GELU_ONE", base_path)
+        write_matrix(np.array([[self.hw['relu']['rqs_add']]]), "activation_requant_add", base_path)
+        write_matrix(np.array([[self.hw['relu']['rqs_mul']]]), "activation_requant_mult", base_path)
+        write_matrix(np.array([[self.hw['relu']['rqs_shift']]]), "activation_requant_shift", base_path)
 
-        # Requantization Params for Attention (7 steps: Q, K, V, QK, AV, OW, SumOW)
-        # Note: FFN params are handled separately by the hardware controller logic
-        rqs_attn_mul = [
+        # Requantization Params for Attention - reshape to match reference format
+        rqs_attn_mul = np.array([[
             self.hw['q_proj']['mult'], self.hw['k_proj']['mult'], self.hw['v_proj']['mult'],
             self.hw['qk_matmul']['mult'], self.hw['av_matmul']['mult'], self.hw['out_proj']['mult'], 0
-        ]
-        rqs_attn_shift = [
+        ]])
+        rqs_attn_shift = np.array([[
             self.hw['q_proj']['shift'], self.hw['k_proj']['shift'], self.hw['v_proj']['shift'],
             self.hw['qk_matmul']['shift'], self.hw['av_matmul']['shift'], self.hw['out_proj']['shift'], 0
-        ]
-        rqs_attn_add = [
+        ]])
+        rqs_attn_add = np.array([[
             self.hw['q_proj']['add'], self.hw['k_proj']['add'], self.hw['v_proj']['add'],
             self.hw['qk_matmul']['add'], self.hw['av_matmul']['add'], self.hw['out_proj']['add'], 0
-        ]
-        self._write_flat_row(rqs_attn_mul, "RQS_ATTN_MUL.txt")
-        self._write_flat_row(rqs_attn_shift, "RQS_ATTN_SHIFT.txt")
-        self._write_flat_row(rqs_attn_add, "RQS_ATTN_ADD.txt")
+        ]])
+        write_matrix(rqs_attn_mul, "RQS_ATTN_MUL", base_path)
+        write_matrix(rqs_attn_shift, "RQS_ATTN_SHIFT", base_path)
+        write_matrix(rqs_attn_add, "RQS_ATTN_ADD", base_path)
         
-        # Requantization Params for FFN (2 steps: F1, F2)
-        rqs_ffn_mul = [self.hw['ffn1']['mult'], self.hw['ffn2']['mult']]
-        rqs_ffn_shift = [self.hw['ffn1']['shift'], self.hw['ffn2']['shift']]
-        rqs_ffn_add = [self.hw['ffn1']['add'], self.hw['ffn2']['add']]
-        self._write_flat_row(rqs_ffn_mul, "RQS_FFN_MUL.txt")
-        self._write_flat_row(rqs_ffn_shift, "RQS_FFN_SHIFT.txt")
-        self._write_flat_row(rqs_ffn_add, "RQS_FFN_ADD.txt")
+        # Requantization Params for FFN
+        rqs_ffn_mul = np.array([[self.hw['ffn1']['mult'], self.hw['ffn2']['mult']]])
+        rqs_ffn_shift = np.array([[self.hw['ffn1']['shift'], self.hw['ffn2']['shift']]])
+        rqs_ffn_add = np.array([[self.hw['ffn1']['add'], self.hw['ffn2']['add']]])
+        write_matrix(rqs_ffn_mul, "RQS_FFN_MUL", base_path)
+        write_matrix(rqs_ffn_shift, "RQS_FFN_SHIFT", base_path)
+        write_matrix(rqs_ffn_add, "RQS_FFN_ADD", base_path)
+        
         print("  ✅ Wrote global parameter files (RQS, relu).")
 
     def write_standalone_files(self):
-        """Generates all verification files for the 'standalone' testbench."""
-        # This carefully replicates the file generation from ITA.py
-        path = self.paths['standalone']
+        """
+        Generates all verification files for the 'standalone' testbench
+        using the correct tiling logic from the ITA.Transformer helper.
+        """
+        print("  ✨ Generating standalone files with correct hardware tiling...")
         
         # Inputs
-        self._write_standalone_tensor(self.t['Q_in'], 'Q')
-        self._write_standalone_tensor(self.t['K_in'], 'K')
-        self._write_standalone_tensor(self.t['V_in'], 'V')
-        self._write_standalone_tensor(self.t['FF_in'], 'FF')
+        # Q, K, V Projections
+        self.ita_tiler.tiler_QK(self.t['Q_in'].squeeze(0), self.t['Wq'], self.t['Bq'], self.t['Qp_requant'], "Q", "Wq", "Bq", "Qp")
+        self.ita_tiler.tiler_QK(self.t['K_in'].squeeze(0), self.t['Wk'], self.t['Bk'], self.t['Kp_requant'], "K", "Wk", "Bk", "Kp")
+        self.ita_tiler.tiler_V(self.t['V_in'].squeeze(0), self.t['Wv'], self.t['Bv'], self.t['Vp_requant'], "V", "Wv", "Bv", "Vp")
 
-        # Weights and Biases (squeezing to remove head dimension of 1)
-        for name in ['Wq', 'Wk', 'Wv', 'Wo', 'Wff', 'Wff2']:
-             self._write_standalone_tensor(self.t[name].squeeze(0).T, f"{name}_0")
-        for name in ['Bq', 'Bk', 'Bv', 'Bo', 'Bff', 'Bff2']:
-             self._write_standalone_tensor(self.t[name].squeeze(0), f"{name}_0")
+        # Attention and Context Calculation
+        self.ita_tiler.tiler_AV(self.t['Qp_requant'], self.t['Kp_requant'].transpose(0, 2, 1), self.t['A_requant'], "Qp_in", "Kp_in", "A")
+        # Softmax output has a specific file format in the reference script
+        write_matrix(self.t['A_partial_softmax'].squeeze(0), 'A_soft_0', self.ita_tiler.paths['standalone'])
+        self.ita_tiler.tiler_AV(self.t['A_partial_softmax'], self.t['Vp_requant'], self.t['O_soft_requant'], "A_stream_soft_in", "Vp_in", "O_soft")
 
-        # Intermediate Tensors
-        self._write_standalone_tensor(self.t['Qp_requant'], 'Qp_0')
-        self._write_standalone_tensor(self.t['Kp_requant'], 'Kp_0')
-        self._write_standalone_tensor(self.t['Vp_requant'], 'Vp_0')
-        self._write_standalone_tensor(self.t['A_requant'], 'A_0')
-        self._write_standalone_tensor(self.t['A_partial_softmax'], 'A_soft_0')
-        self._write_standalone_tensor(self.t['O_soft_requant'], 'O_soft_0')
-        self._write_standalone_tensor(self.t['Out_soft_requant'], 'Out_soft_0')
-        self._write_standalone_tensor(self.t['FFp_requant'], 'FFp_0')
-        self._write_standalone_tensor(self.t['relu'], 'relu')
-        self._write_standalone_tensor(self.t['FF2p_requant'], 'FF2p_0')
+        # Attention and Context Calculation
+        self.ita_tiler.tiler_AV(self.t['Qp_requant'], self.t['Kp_requant'].transpose(0, 2, 1), self.t['A_requant'], "Qp_in", "Kp_in", "A")
+        # Softmax output has a specific file format in the reference script
+        write_matrix(self.t['A_partial_softmax'].squeeze(0), 'A_soft_0', self.ita_tiler.paths['standalone'])
+        self.ita_tiler.tiler_AV(self.t['A_partial_softmax'], self.t['Vp_requant'], self.t['O_soft_requant'], "A_stream_soft_in", "Vp_in", "O_soft")
 
+        # Output Projection
+        self.ita_tiler.tiler_Out(self.t['O_soft_requant'], self.t['Wo'], self.t['Bo'], self.t['Out_soft_requant'], "O_soft_in", "Wo", "Bo", "Out_soft")
+        
+        # FFN Layers
+        self.ita_tiler.tiler_QK(self.t['FF_in'].squeeze(0), self.t['Wff'], self.t['Bff'], self.t['relu'], "FF", "Wff", "Bff", "FFp")
+        self.ita_tiler.tiler_Out(self.t['relu'], self.t['Wff2'], self.t['Bff2'], self.t['FF2p_requant'], "FFp_in", "Wff2", "Bff2", "FF2p")
+        
         # Create empty placeholder files as in ITA.py to prevent testbench errors
-        open(os.path.join(path, "preactivation.txt"), 'w').close()
-        open(os.path.join(path, "relu.txt"), 'w').close()
-        print("  ✅ Wrote all standalone verification files.")
+        open(os.path.join(self.paths['standalone'], "preactivation.txt"), 'w').close()
+        open(os.path.join(self.paths['standalone'], "gelu.txt"), 'w').close() # Note: reference script creates gelu.txt, not relu.txt
+        print("  ✅ Wrote all standalone verification files with correct tiling.")
 
     def write_hwpe_files(self):
         """Generates all data files for the 'hwpe' testbench."""
-        # Create an empty mem.txt file first, as in ITA.py
-        open(os.path.join(self.paths['hwpe'], 'mem.txt'), 'w').close()
+        # This method's logic is already correct as it uses the reference utils.
+        path = self.paths['hwpe']
+        open(os.path.join(path, 'mem.txt'), 'w').close()
 
         hwpe_map = {
             'Q': self.t['Q_in'],
@@ -293,7 +323,10 @@ class FileWriter:
             'F2': self.t['FF2p_requant']
         }
         for name, tensor in hwpe_map.items():
-            self._write_hwpe_tensor(tensor, name)
+            squeezed_tensor = tensor.squeeze()
+            tiles = split_matrix(squeezed_tensor, block_shape=(64, 64))
+            packed_hex = pack_array_8b_to_word(tiles, hex_string=False)
+            write_matrix_mem_hex(packed_hex, name, path)
         print("  ✅ Wrote all HWPE data files.")
             
     def write_npz_files(self):
@@ -317,8 +350,6 @@ class FileWriter:
         self.write_standalone_files()
         self.write_hwpe_files()
         self.write_npz_files()
-        # Note: mempool and snitch-cluster file generation would be added here
-        # if their complex, specific layouts are required.
         print("--- ✅ All Files Exported Successfully! ---")
 
 # ==============================================================================
@@ -394,7 +425,7 @@ def translate_scales_to_hw_params(model, block_idx):
     mult_ffn2, shift_ffn2 = calculate_multiplier_shift(s_eff_ffn2, 16)
     hw_params['ffn2'] = {'mult': mult_ffn2, 'shift': shift_ffn2, 'add': ffn.fc2.zero_point}
 
-    # --- GELU Parameters (Fixed by Hardware Design) ---
+    # --- RELU Parameters (Fixed by Hardware Design) ---
     # These are not learned but are part of the hardware's fixed configuration.
     hw_params['relu'] = {"q_1": -22, "q_b": -14, "q_c": 24, "rqs_mul": 119, "rqs_shift": 20, "rqs_add": 0}
 
@@ -535,11 +566,12 @@ def export_all_vectors(checkpoint_path):
         
         # 4.4. Sanity check the simulation against the PyTorch reference.
         print(f"  🔬 Sanity Check for Block {block_idx}...")
-        pytorch_intermediates = pytorch_intermediates_list[block_idx]
+        #pytorch_intermediates = pytorch_intermediates_list[block_idx]
         all_match = True
         for name, golden_tensor in final_tensors.items():
-            if name in pytorch_intermediates:
-                pytorch_tensor = pytorch_intermediates[name].cpu().numpy()
+            if name in tensors:
+                print(f"    - Checking {name:<20}...", end=' ')
+                pytorch_tensor = tensors[name]#.cpu().numpy()
                 mae = np.mean(np.abs(golden_tensor.astype(np.float32) - pytorch_tensor.astype(np.float32)))
                 if mae > 1.001: # Allow a tolerance of 1 due to rounding differences
                     print(f"    - {name:<20} MAE = {mae:.4f} ⚠️ MISMATCH")
@@ -557,31 +589,6 @@ def export_all_vectors(checkpoint_path):
             ffn_out_float = model.dequant_ffn[block_idx](ffn_out_torch)
             res2_float = x_float + ffn_out_float
             x_float = model.norm2_layers[block_idx](res2_float)
-    
-    print("\n--- Exporting global model files (ONNX)... ---")
-    """"
-    # 1. Create a dummy hidden state for the LSTM. ONNX tracer cannot handle None.
-    # The required shape is (num_layers, batch_size, hidden_size).
-    num_layers = 3
-    batch_size = 1
-    hidden_size = 128
-    dummy_hidden_state = (
-        torch.zeros(num_layers, batch_size, hidden_size),
-        torch.zeros(num_layers, batch_size, hidden_size)
-    )
-
-    # 2. Define the complete tuple of dummy inputs for tracing.
-    dummy_inputs = [(input_image, torch.rand(1, 1), torch.rand(1, 4), dummy_hidden_state)]
-
-    # 3. Update input/output names to reflect the unrolled hidden state tuple.
-    torch.onnx.export(
-        model,
-        dummy_inputs,
-        os.path.join(base_folder_name, "network.onnx"),
-        opset_version=17,
-        input_names=['dummy_input'],
-        output_names=['output', 'hidden_out_h', 'hidden_out_c']
-    )"""
     
     print("\n--- ✅ All Files Exported Successfully! ---")
 

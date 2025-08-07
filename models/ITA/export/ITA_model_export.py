@@ -16,10 +16,6 @@ sys.path.insert(0, project_root)
 from models.ITA.ITA_layers import OverlapPatchMerging
 from models.ITA.export.ITA_layers_export import ITASelfAttention_Export, ITAFeedForward_Export
 
-# Import the EXPORT versions of the layers
-from models.ITA.export.ITA_layers_export  import ITASelfAttention_Export, ITAFeedForward_Export
-from models.ITA.ITA_layers import OverlapPatchMerging
-
 
 def refine_inputs(X):
     """Pre-processes the input data to the required shape."""
@@ -41,12 +37,16 @@ class ITALSTMNetVIT_Export(nn.Module):
     def __init__(self):
         super().__init__()
         
-        self.E, self.S, self.P, self.F, self.H = 128, 64, 192, 256, 1
+        self.E, self.S, self.P, self.F, self.H = 128, 128, 192, 256, 1
         
         self.tokenizer = OverlapPatchMerging(
-            in_channels=1, out_channels=self.E, patch_size=7, 
-            stride=2, padding=3, output_size=(8, 8)
-        )
+                            in_channels=1, 
+                            out_channels=self.E, 
+                            patch_size=7, 
+                            stride=2, 
+                            padding=3, 
+                            output_size=(8, 16)
+                        )
 
         # Use the _Export classes for the quantized blocks
         self.attention_blocks = nn.ModuleList([
@@ -69,6 +69,9 @@ class ITALSTMNetVIT_Export(nn.Module):
         self.dequant_attention = nn.ModuleList([torch.quantization.DeQuantStub() for _ in range(2)])
         self.quant_ffn = nn.ModuleList([torch.quantization.QuantStub() for _ in range(2)])
         self.dequant_ffn = nn.ModuleList([torch.quantization.DeQuantStub() for _ in range(2)])
+        
+        self.quant_decoder = torch.quantization.QuantStub()
+        self.dequant_out = torch.quantization.DeQuantStub()
         
         self.cat = nnq.FloatFunctional()
         self.add = nnq.FloatFunctional()

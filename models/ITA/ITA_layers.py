@@ -115,16 +115,27 @@ class ITASoftmax(nn.Module):
 # --------------------------------------
 
 class OverlapPatchMerging(nn.Module):
-    """Tokenizer that uses a Conv2d to create tokens."""
+    """
+    An implementation of overlap patch merging that uses a Conv2d to create
+    tokens and F.interpolate for robust downsampling.
+    """
     def __init__(self, in_channels, out_channels, patch_size, stride, padding, output_size):
         super().__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=patch_size, stride=stride, padding=padding)
-        self.pool = nn.AdaptiveAvgPool2d(output_size)
+        self.conv = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=patch_size,
+            stride=stride,
+            padding=padding,
+        )
         self.norm = nn.LayerNorm(out_channels)
+        self.output_size = output_size
 
     def forward(self, x):
         x = self.conv(x)
-        x = self.pool(x)
+        # Explicitly downsample to the target size for ONNX compatibility
+        x = F.interpolate(x, size=self.output_size, mode='bilinear')
+        
         B, C, H, W = x.shape
         x = x.flatten(2).transpose(1, 2)
         x = self.norm(x)

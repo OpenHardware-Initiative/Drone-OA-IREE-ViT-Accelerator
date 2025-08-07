@@ -11,7 +11,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
 # Import our final model and the base trainer
-from models.testing.ITA_model import ITALSTMNetVIT
+from models.ITA.ITA_model import ITALSTMNetVIT
 from third_party.vitfly_FPGA.training.train import TRAINER
 
 class QATTrainer(TRAINER):
