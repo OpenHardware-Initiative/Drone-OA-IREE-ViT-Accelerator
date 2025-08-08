@@ -19,18 +19,6 @@ class QATTrainer(TRAINER):
         # Initialize dataloaders, workspace, etc. from the base TRAINER
         super().__init__(args)
 
-        # --- IMPORTANT: Define hardware requantization parameters ---
-        # These are placeholders. For a true hardware match, these would be
-        # determined from post-training calibration or a more advanced QAT process.
-        itaparameters = {
-            "mq": 1.0, "sq": 0, "mk": 1.0, "sk": 0, "mv": 1.0, "sv": 0,
-            "ma": 1.0, "sa": 0, "mav": 1.0, "sav": 0, "mo": 1.0, "so": 0,
-            "m_ff1": 1.0, "s_ff1": 0, "m_ff2": 1.0, "s_ff2": 0,
-            # ITAGELU params (used in non-QAT mode)
-            "q_1": -22, "q_b": -14, "q_c": 24, "gelu_rqs_mul": 119, 
-            "gelu_rqs_shift": 20, "gelu_rqs_add": 0,
-        }
-
         # --- Override model with our quant-ready version in QAT mode ---
         self.mylogger("[QAT] Initializing ITALSTMNetVIT for QAT...")
         self.model = ITALSTMNetVIT().to(self.device).float()

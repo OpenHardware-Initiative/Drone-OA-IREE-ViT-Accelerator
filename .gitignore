@@ -186,3 +186,6 @@ training/small_data
 data_*
 
 .python-version
+
+# IREE
+compilation_phases/

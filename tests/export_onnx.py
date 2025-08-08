@@ -125,12 +125,15 @@ def main():
 
     # --- Step 5: Create Dummy Inputs ---
     batch_size = 1
-    dummy_img = torch.randn(batch_size, 1, 60, 90, dtype=torch.float32)
-    dummy_add = torch.randn(batch_size, 1, dtype=torch.float32)
-    dummy_quat = torch.randn(batch_size, 4, dtype=torch.float32)
-    dummy_h_in = torch.randn(3, batch_size, 128, dtype=torch.float32)
-    dummy_c_in = torch.randn(3, batch_size, 128, dtype=torch.float32)
-    dummy_inputs = (dummy_img, dummy_add, dummy_quat, dummy_h_in, dummy_c_in)
+    dummy_img = torch.randn(1, 1, 60, 90, device=DEVICE)
+# 🚨 FIX IS HERE: The `additional_data` (desvel) feature dimension should be 1, not 3.
+    dummy_desvel = torch.randn(1, 1, device=DEVICE) 
+    dummy_quat = torch.randn(1, 4, device=DEVICE)
+    # LSTM states: (num_layers, batch_size, hidden_size)
+    dummy_h_in = torch.randn(3, 1, 128, device=DEVICE)
+    dummy_c_in = torch.randn(3, 1, 128, device=DEVICE)
+    dummy_inputs = (dummy_img, dummy_desvel, dummy_quat, dummy_h_in, dummy_c_in)
+
     print("✅ Created dummy inputs for tracing.")
 
     # --- Step 6: Configure and Run ONNX Export ---
