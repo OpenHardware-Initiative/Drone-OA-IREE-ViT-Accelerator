@@ -133,6 +133,7 @@ class ONNXParameterExtractor:
                 output_q_info = self._trace_output_to_quant(node.output[0])
                 if input_params and output_q_info:
                     op_key = 'Softmax' if node.op_type == 'Softmax' else 'ReLU'
+                    output_q_info['float_output_tensor'] = node.output[0] 
                     extracted_params[op_key].append({'name': node.name, 'activation': input_params, **output_q_info})
 
         print(f"✅ Static Extraction Complete: Found {len(extracted_params['Linear'])} Linear Layers, "

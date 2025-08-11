@@ -33,6 +33,61 @@ MLIR_PATH = os.path.join(OUTPUT_DIR, "model_quantized.mlir")
 DEVICE = "cpu"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+def find_nodes_between(model_path, start_node_names, end_node_names):
+    """
+    Finds all nodes between a set of start and end nodes in an ONNX graph.
+
+    Args:
+        model_path (str): Path to the ONNX model.
+        start_node_names (list[str]): Names of the nodes that are right BEFORE the subgraph.
+        end_node_names (list[str]): Names of the nodes that are right AFTER the subgraph.
+
+    Returns:
+        list[str]: A list of names of the nodes in the subgraph.
+    """
+    model = onnx.load(model_path)
+    # Create lookups for producers and consumers of each tensor
+    node_outputs = {}
+    consumers = {}
+    for node in model.graph.node:
+        for input_name in node.input:
+            if input_name not in consumers:
+                consumers[input_name] = []
+            consumers[input_name].append(node)
+        for output_name in node.output:
+            node_outputs[output_name] = node
+
+    subgraph_nodes = set()
+    
+    # Get the output tensors of the start nodes
+    start_tensors = []
+    for node in model.graph.node:
+        if node.name in start_node_names:
+            start_tensors.extend(node.output)
+
+    # Use a queue for a Breadth-First Search (BFS)
+    queue = []
+    for tensor in start_tensors:
+        if tensor in consumers:
+            queue.extend(consumers[tensor])
+            
+    visited = set()
+    while queue:
+        current_node = queue.pop(0)
+        if current_node.name in visited or current_node.name in end_node_names:
+            continue
+        
+        visited.add(current_node.name)
+        subgraph_nodes.add(current_node.name)
+        
+        # Add the next nodes in the graph to the queue
+        for output_tensor in current_node.output:
+            if output_tensor in consumers:
+                for consumer_node in consumers[output_tensor]:
+                    queue.append(consumer_node)
+                    
+    return list(subgraph_nodes)
+
 
 # --- 2. Model Preparation for ONNX Export ---
 
@@ -101,7 +156,9 @@ torch.onnx.export(
     FLOAT_ONNX_PATH,
     input_names=input_names,
     output_names=output_names,
-    opset_version=14, # A modern opset is recommended
+    #dynamo=True,
+    opset_version=17, # A modern opset is recommended
+    verbose=True,
     dynamic_axes={ # If batch size can vary
         'img_data': {0: 'batch_size'},
         'additional_data': {0: 'batch_size'},
@@ -160,6 +217,33 @@ class CalibrationDataReader(onnxruntime.quantization.CalibrationDataReader):
 # Instantiate the reader
 calibration_data_reader = CalibrationDataReader(DATASET_DIR, DEVICE)
 
+print("\n✅ Step 3: Finding Softmax output tensor name...")
+softmax_output_tensor_name = None
+onnx_model = onnx.load(FLOAT_ONNX_PATH)
+for node in onnx_model.graph.node:
+    if node.op_type == 'Softmax':
+        # The output tensor is the first (and only) output of the Softmax node
+        softmax_output_tensor_name = node.output[0] 
+        print(f"   🎯 Found Softmax node '{node.name}', its output tensor is: '{softmax_output_tensor_name}'")
+        break
+
+if not softmax_output_tensor_name:
+    print("   ❌ Error: Could not find a Softmax node in the ONNX graph. Exiting.")
+    #sys.exit(1)
+    
+forced_scale = 1.0 / 128.0
+forced_zero_point = 127
+
+# Define the tensor-specific override
+tensor_overrides = {
+    softmax_output_tensor_name: [
+        {
+            'quant_type': QuantType.QUInt8,
+            'scale': np.float32(forced_scale),
+            'zero_point': np.uint8(forced_zero_point),
+        }
+    ]
+}
 # Perform static quantization
 quantize_static(
     model_input=FLOAT_ONNX_PATH,
@@ -170,10 +254,11 @@ quantize_static(
     weight_type=QuantType.QInt8,       # Symmetric INT8 for weights
     #op_types_to_quantize_per_channel=['MatMul', 'Conv'], # Per-channel for Conv/Linear
     per_channel=False, # Enable per-channel quantization for weights
-    bias_type=Int32, # Biases remain in INT32,
     extra_options={
         'ActivationSymmetric': True, # Enforce symmetric quantization
-        'WeightSymmetric': True      # Enforce symmetric quantization
+        'WeightSymmetric': True,      # Enforce symmetric quantization
+        #'TensorQuantOverrides': tensor_overrides,
+        #'ForceQuantizeNoInputCheck': True,
     }
 )
 print(f"Quantized ONNX model saved to {QUANTIZED_ONNX_PATH}")

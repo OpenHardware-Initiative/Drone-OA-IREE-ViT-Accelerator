@@ -4,6 +4,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import os
+import sys
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+sys.path.insert(0, project_root)
+
+from .ITA_softmax import ITASoftmaxDifferentiable
+
+
 # --------------------------------------
 # Standard Transformer Building Blocks
 # (Optimized for Float Training and Export)
@@ -49,7 +59,8 @@ class ITASelfAttentionFloat(nn.Module):
         
         # NOTE: For float training, we use the standard nn.Softmax.
         # Your custom ITASoftmax will be swapped in *after* training, before export.
-        self.softmax = nn.Softmax(dim=-1)
+        #self.softmax = ITASoftmaxDifferentiable(dim=-1)
+        self.softmax = ITASoftmax(dim=-1)  # Use standard softmax for float training
 
     def forward(self, x): # H and W are not needed here, simplifying the signature
         B, N, _ = x.shape
@@ -90,6 +101,15 @@ class ITAFeedForwardFloat(nn.Module):
         return x
     
 class ITASoftmax(nn.Module):
+    """A wrapper for softmax to allow for specific quantization rules."""
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.softmax = nn.Softmax(*args, **kwargs)
+
+    def forward(self, x):
+        return self.softmax(x)
+    
+class ITASoftmaxHW(nn.Module):
     """A hardware-compliant streaming Softmax implementation."""
     def __init__(self):
         super().__init__()

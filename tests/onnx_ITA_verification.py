@@ -146,7 +146,22 @@ def verify_step(step_name, ita_result, onnx_truth):
         print(f"ONNX: max result {max(onnx_truth_flat)}, min result {min(onnx_truth_flat)}")
         return False
 
-
+def manual_quantize(float_tensor, scale, zero_point, dtype=np.uint8):
+    """
+    Manually quantizes a float tensor to an integer tensor.
+    """
+    # The formula is: q = round(real / scale) + zp
+    quantized_float = np.round(float_tensor / scale) + zero_point
+    
+    # Clip the values to the valid range of the target integer type
+    if dtype == np.uint8:
+        q_min, q_max = 0, 255
+    else: # np.int8
+        q_min, q_max = -128, 127
+        
+    clipped_tensor = np.clip(quantized_float, q_min, q_max)
+    
+    return clipped_tensor.astype(dtype)
 
 def main(args):
     # 1. Extract all static parameters and runtime values from ONNX model
@@ -164,6 +179,9 @@ def main(args):
     input_feed = {"img_data": input_image_np, "additional_data": np.zeros((1, 1), dtype=np.float32), "quat_data": np.zeros((1, 4), dtype=np.float32), "h_in": np.zeros((3, 1, 128), dtype=np.float32), "c_in": np.zeros((3, 1, 128), dtype=np.float32)}
     names_to_capture = {p['output_q_tensor'] for op_list in all_static_params.values() for p in op_list}
     names_to_capture.update({p['activation']['q_tensor_name'] for op_list in all_static_params.values() for p in op_list if 'activation' in p})
+    for p in all_static_params.get('Softmax', []):
+        if 'float_output_tensor' in p:
+            names_to_capture.add(p['float_output_tensor'])
     # CORRECTED Line in onnx_ITA_verification.py
     all_runtime_values = run_and_capture_intermediates(args.onnx_model, input_feed, list(names_to_capture))
 
@@ -246,9 +264,24 @@ def main(args):
         verify_step("V Projection", ita_sim.Vp_requant, all_runtime_values.get(attn_block['v_proj']['output_q_tensor']))
         
         ita_sim.step4_QK(no_partial_softmax=False)
+        print(f"Data type of QK MatMul output: {ita_sim.A_requant.dtype}, ONNX type: {all_runtime_values.get(attn_block['MatMul_Activation']['qk_matmul']['output_q_tensor']).dtype}")
         verify_step("QK MatMul (A_requant)", ita_sim.A_requant, all_runtime_values.get(attn_block['MatMul_Activation']['qk_matmul']['output_q_tensor']))
+        
+        forced_scale = 1.0 / 128.0
+        forced_zero_point = 127
+
+        # Get the float32 ground truth from the ONNX model run
+        onnx_softmax_float_output = all_runtime_values.get(attn_block['softmax']['float_output_tensor'])
+        onnx_softmax_forced_uint8 = manual_quantize(onnx_softmax_float_output, forced_scale, forced_zero_point)
+        verify_step("Softmax (A_partial_softmax vs. Forced Quant)", ita_sim.A_partial_softmax, onnx_softmax_forced_uint8)
+        
+        print(f"Data type of A_requant: {ita_sim.A_partial_softmax.dtype}, ONNX type: {all_runtime_values.get(attn_block['MatMul_Activation']['qk_matmul']['output_q_tensor']).dtype}")
         verify_step("Softmax (A_partial_softmax)", ita_sim.A_partial_softmax, all_runtime_values.get(attn_block['softmax']['output_q_tensor']))
 
+        if args.isolate_softmax:
+            print("  ℹ️  --isolate_softmax flag is active. Injecting ONNX ground truth to test subsequent layers.")
+            ita_sim.A_partial_softmax = get_and_squeeze(attn_block['softmax']['output_q_tensor'])
+        
         ita_sim.step5_AV()
         verify_step("AV MatMul (O_soft)", ita_sim.O_soft_requant, all_runtime_values.get(attn_block['MatMul_Activation']['av_matmul']['output_q_tensor']))
 
@@ -269,5 +302,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Extract ONNX data and run through the ITA hardware model.")
     parser.add_argument('--onnx_model', type=str, required=True, help='Path to the final quantized ONNX model (.onnx)')
     parser.add_argument('--image', type=str, required=True, help='Path to the ground-truth input image.')
+    parser.add_argument('--isolate_softmax', action='store_true', help='Inject the ONNX ground truth after softmax to isolate its error.')
     args = parser.parse_args()
     main(args)

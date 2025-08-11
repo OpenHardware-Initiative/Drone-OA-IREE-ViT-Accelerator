@@ -81,10 +81,8 @@ class ITALSTMNetVITFloat(nn.Module):
         
         x = x.flatten(1)
         out = self.decoder(x)
-        
         # Use torch.cat directly
         out_cat = torch.cat([out, additional_data / 10.0, quat_data], dim=1).unsqueeze(0)
-        
         hidden_state = X[3] if len(X) > 3 else None
         out_lstm, h = self.lstm(out_cat, hidden_state)
         out_final = self.nn_fc2(out_lstm.squeeze(0))

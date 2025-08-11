@@ -20,7 +20,7 @@ val_split = 0.2
 
 # Model and checkpoint
 # model_type is ignored by qat_ita_trainer.py, which always uses ITALSTMNetVIT
-model_type = ITALSTMNetVIT 
+model_type = ViTLSTM 
 
 # --- BEST PRACTICE: Start QAT from a pre-trained float model ---
 load_checkpoint_qat = False
@@ -35,4 +35,4 @@ save_model_freq = 10
 val_freq = 5
 
 # Workspace suffix for QAT runs
-ws_suffix = _qat_rom_scratch
+ws_suffix = _qat_quant_soft

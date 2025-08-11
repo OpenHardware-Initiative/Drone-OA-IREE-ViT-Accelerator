@@ -63,7 +63,7 @@ class QATTrainer(TRAINER):
         self.model.fuse_model() # Note: Your fuse_model() method is currently empty.
         
         self.mylogger("[QAT] Preparing model with observers...")
-        torch.quantization.prepare_qat(self.model, inplace=True)
+        torch.ao.quantization.prepare_qat_fx(self.model, inplace=True)
 
         # Recreate optimizer after model modification
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
