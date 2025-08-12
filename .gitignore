@@ -184,6 +184,7 @@ training/logs
 training/datasets/
 training/small_data
 data_*
+training/data/
 
 .python-version
 

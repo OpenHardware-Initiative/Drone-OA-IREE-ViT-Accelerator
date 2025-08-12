@@ -14,7 +14,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
 # --- Your Custom Imports ---
-from models.model import ITALSTMNetVIT_QAT
+from models.ITA.QAT.model import ITALSTMNetVIT_QAT
 from third_party.ITA_FPGA.PyITA.ITA import Transformer # Your accelerator simulator
 
 # ==============================================================================
