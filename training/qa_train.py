@@ -11,7 +11,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
 # Import our final model and the base trainer
-from models.ITA.ITA_model import ITALSTMNetVIT
+from models.ITA.QAT.model import ITALSTMNetVIT_QAT
 from third_party.vitfly_FPGA.training.train import TRAINER
 
 class QATTrainer(TRAINER):
@@ -21,7 +21,7 @@ class QATTrainer(TRAINER):
 
         # --- Override model with our quant-ready version in QAT mode ---
         self.mylogger("[QAT] Initializing ITALSTMNetVIT for QAT...")
-        self.model = ITALSTMNetVIT().to(self.device).float()
+        self.model = ITALSTMNetVIT_QAT().to(self.device).float()
 
         # (Optional) load a float pretrained checkpoint
         if args.load_checkpoint_qat:
@@ -34,36 +34,24 @@ class QATTrainer(TRAINER):
         
         torch.backends.quantized.engine = 'qnnpack'
 
-        # 1. Define the qconfig for ITA-compliant symmetric quantization.
-        # This configuration forces zero_point=0 to match the hardware.
         ita_symmetric_qconfig = QConfig(
-        activation=FusedMovingAvgObsFakeQuantize.with_args(
-            observer=torch.quantization.MovingAverageMinMaxObserver,
-            quant_min=-128, quant_max=127, dtype=torch.qint8,
-            qscheme=torch.per_tensor_symmetric, reduce_range=False
-        ),
-        weight=FusedMovingAvgObsFakeQuantize.with_args(
-            observer=torch.quantization.MovingAverageMinMaxObserver,
-            quant_min=-128, quant_max=127, dtype=torch.qint8,
-            qscheme=torch.per_tensor_symmetric, reduce_range=False
+            activation=FusedMovingAvgObsFakeQuantize.with_args(
+                observer=torch.quantization.MovingAverageMinMaxObserver,
+                quant_min=-128, quant_max=127, dtype=torch.qint8,
+                qscheme=torch.per_tensor_symmetric, reduce_range=False
+            ),
+            weight=FusedMovingAvgObsFakeQuantize.with_args(
+                observer=torch.quantization.MovingAverageMinMaxObserver,
+                quant_min=-128, quant_max=127, dtype=torch.qint8,
+                qscheme=torch.per_tensor_symmetric, reduce_range=False
+            )
         )
-    )
-
-        # 2. Apply our custom qconfig instead of the default one.
-        self.model.qconfig = ita_symmetric_qconfig
-        self.model.tokenizer.qconfig = None
         
-        for block in self.model.norm1_layers:
-            block.qconfig = None
-        for block in self.model.norm2_layers:
-            block.qconfig = None
-        
-        # 3. Fuse and prepare the model for QAT.
-        self.mylogger("[QAT] Fusing model layers (if any)...")
-        self.model.fuse_model() # Note: Your fuse_model() method is currently empty.
+        self.model.attention_blocks.qconfig = ita_symmetric_qconfig
+        self.model.ffn_blocks.qconfig = ita_symmetric_qconfig
         
         self.mylogger("[QAT] Preparing model with observers...")
-        torch.ao.quantization.prepare_qat_fx(self.model, inplace=True)
+        torch.ao.quantization.prepare_qat(self.model, inplace=True)
 
         # Recreate optimizer after model modification
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
@@ -73,7 +61,7 @@ class QATTrainer(TRAINER):
         self.mylogger("[QAT] Finalizing training and converting to integer model...")
         self.model.cpu()
         self.model.eval()
-        torch.quantization.convert(self.model, inplace=True)
+        torch.ao.quantization.convert(self.model, inplace=True)
         out_path = os.path.join(self.workspace, "model_quantized_final.pth")
         torch.save(self.model.state_dict(), out_path)
         self.mylogger(f"[QAT] Fully quantized model saved to {out_path}")

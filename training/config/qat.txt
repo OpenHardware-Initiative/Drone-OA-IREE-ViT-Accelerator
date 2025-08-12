@@ -35,4 +35,4 @@ save_model_freq = 10
 val_freq = 5
 
 # Workspace suffix for QAT runs
-ws_suffix = _qat_quant_soft
+ws_suffix = _qat_replace_model

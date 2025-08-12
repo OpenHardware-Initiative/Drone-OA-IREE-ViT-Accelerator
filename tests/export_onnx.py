@@ -1,171 +1,110 @@
+# export_onnx.py
+
 import torch
-import torch.nn as nn
-import onnx
-import onnxruntime
-import numpy as np
-import os
-import sys
+import os, sys
 
-# Import the necessary torch.quantization components
-from torch.quantization import QConfig, FusedMovingAvgObsFakeQuantize, prepare_qat, convert
+# Adjust these imports based on your project structure.
+# This assumes the script is in the 'training' folder.
 
-# --- Add project root to path to import model files ---
+# --- Ensure correct paths for imports ---
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
-from models.ITA.ITA_model import ITALSTMNetVIT
-from models.ITA.export.ITA_model_export import ITALSTMNetVIT_Export
-from models.ITA.dispatch.ITA_model_placeholder import ITALSTMNetVIT_Placeholder_Export
+from models.ITA.QAT.model import ITALSTMNetVIT_QAT
+from models.ITA.export.ITA_ONNX import ITAForONNXExport
 
-# ==============================================================================
-#  1. ONNX-FRIENDLY FORWARD PASS (No changes here)
-# ==============================================================================
-def forward_onnx(self, img_data, additional_data, quat_data, h_in, c_in):
-    """
-    An ONNX-compatible forward method that accepts a flat tuple of tensors.
-    """
-    # The conditional shape check is removed as we provide a correctly-sized dummy input.
-    # if img_data.shape[-2:] != (60, 90):
-    #     img_data = nn.functional.interpolate(img_data, size=(60, 90), mode='bilinear', align_corners=False)
+QUANTIZED_ONNX_PATH = "ita_model_for_hardware.onnx"
+MLIR_PATH = "ita_model_for_hardware.mlir"
 
-    hidden_state = (h_in, c_in)
-    x_float, H, W = self.tokenizer(img_data)
-
-    for i in range(len(self.attention_blocks)):
-        res_attn = x_float
-        x_quant_attn = self.quant_attention[i](x_float)
-
-        # --- FIX 1: Unpack the tuple returned by the attention block ---
-        # The block returns (output_tensor, intermediates). We only need the tensor.
-        x_quant_attn_out, _ = self.attention_blocks[i](x_quant_attn, H, W)
-
-        x_float = self.dequant_attention[i](x_quant_attn_out)
-        x_float = res_attn + x_float
-        x_float = self.norm1_layers[i](x_float)
-
-        res_ffn = x_float
-        x_quant_ffn = self.quant_ffn[i](x_float)
-
-        # --- FIX 2: Unpack the tuple returned by the FFN block ---
-        x_quant_ffn_out, _ = self.ffn_blocks[i](x_quant_ffn, H, W)
-        
-        x_float = self.dequant_ffn[i](x_quant_ffn_out)
-        x_float = res_ffn + x_float
-        x_float = self.norm2_layers[i](x_float)
-
-    x = x_float.flatten(1)
-    # 1. Use the new stub to convert the float tensor 'x' to a quantized tensor
-    x_quant_decoder = self.quant_decoder(x)
-    # 2. Feed the new quantized tensor into the decoder
-    out = self.decoder(x_quant_decoder)
-    out_float = self.dequant_out(out)
-    out_cat = torch.cat([out_float, additional_data / 10.0, quat_data], dim=1).unsqueeze(0)
-    out_lstm, (h_out, c_out) = self.lstm(out_cat, hidden_state)
-    out_final = self.nn_fc2(out_lstm.squeeze(0))
-
-    return out_final, h_out, c_out
-
-# ==============================================================================
-#  2. MAIN EXPORT LOGIC
-# ==============================================================================
 def main():
-    print("🚀 Starting ONNX export process for ITALSTMNetVIT...")
+    """
+    Loads the trained QAT model, transfers weights to the export model,
+    and exports the result to an ONNX file.
+    """
+    print("--- Starting ONNX Export Process ---")
 
-    # --- Step 1: Instantiate the Model ---
-    model = ITALSTMNetVIT_Export()
+    # --- Step 1: Load the trained and quantized model state ---
     
-    # --- Step 2: Replicate the Full Quantization Conversion Process ---
-    print("🛠️  Preparing model architecture for quantized weights...")
+    # Path to the saved model from your QAT run
+    trained_model_path = "/home/coppholl/Projects/Drone-OA-IREE-ViT-Accelerator/training/logs/d08_11_t16_00_qat_replace_model/model_quantized_final.pth"
     
-    torch.backends.quantized.engine = 'qnnpack'
-    
-    ita_symmetric_qconfig = QConfig(
-        activation=FusedMovingAvgObsFakeQuantize.with_args(
-            observer=torch.quantization.MovingAverageMinMaxObserver,
-            quant_min=-128, quant_max=127, dtype=torch.qint8,
-            qscheme=torch.per_tensor_symmetric, reduce_range=False
-        ),
-        weight=FusedMovingAvgObsFakeQuantize.with_args(
-            observer=torch.quantization.MovingAverageMinMaxObserver,
-            quant_min=-128, quant_max=127, dtype=torch.qint8,
-            qscheme=torch.per_tensor_symmetric, reduce_range=False
-        )
-    )
-    
-    model.qconfig = ita_symmetric_qconfig
-    model.tokenizer.qconfig = None
-    for block in model.norm1_layers:
-        block.qconfig = None
-    for block in model.norm2_layers:
-        block.qconfig = None
-    
-    
-    
-    # **FINAL FIX**: Switch to train() mode for prepare_qat, then back to eval() for convert.
-    model.train()
-    prepare_qat(model, inplace=True)
-    model.eval()
-    convert(model, inplace=True)
-
-    print("✅ Model architecture correctly converted to quantized form.")
-    
-    # --- Step 3: Load the FINAL Converted Quantized State ---
-    quantized_model_path = "/Projects/Agus/Drone-OA-IREE-ViT-Accelerator/training/logs/d08_07_t11_02_qat_rom_scratch/model_quantized_final.pth"
-    if not os.path.exists(quantized_model_path):
-        print(f"❌ Error: Model file not found at {quantized_model_path}")
+    if not os.path.exists(trained_model_path):
+        print(f"Error: Trained model not found at {trained_model_path}")
         return
 
-    print(f"🔍 Loading quantized state_dict from: {quantized_model_path}")
-    state_dict = torch.load(quantized_model_path, map_location='cpu', weights_only=True)
-    model.load_state_dict(state_dict)
+    print(f"Loading trained quantized state_dict from: {trained_model_path}")
+    
+    # Instantiate a fresh QAT model on the CPU in eval mode
+    # This model will act as the source for our float weights.
+    trained_model = ITALSTMNetVIT_QAT()
+    trained_model.eval()
+    
+    # Load the state dict from the .pth file
+    trained_model.load_state_dict(torch.load(trained_model_path), strict=False)
+    
+    print("Successfully loaded trained model.")
 
-    # --- Step 4: Prepare Model for Export ---
-    model.forward = forward_onnx.__get__(model, ITALSTMNetVIT)
-    print("✅ Patched model's forward method for ONNX compatibility.")
-
-    # --- Step 5: Create Dummy Inputs ---
+    # --- Step 2: Instantiate the export model and transfer weights ---
+    
+    print("Instantiating the ONNX export model (ITAForONNXExport)...")
+    model_for_export = ITAForONNXExport()
+    model_for_export.eval()
+    
+    print("Transferring float weights from trained model to export model...")
+    model_for_export.load_float_weights_from_trained_model(trained_model)
+    
+    # --- Step 3: Create a dummy input for tracing ---
+    
+    print("Creating dummy input for ONNX tracing...")
+    # These shapes should match the expected input dimensions of your model
     batch_size = 1
-    dummy_img = torch.randn(1, 1, 60, 90, device=DEVICE)
-# 🚨 FIX IS HERE: The `additional_data` (desvel) feature dimension should be 1, not 3.
-    dummy_desvel = torch.randn(1, 1, device=DEVICE) 
-    dummy_quat = torch.randn(1, 4, device=DEVICE)
-    # LSTM states: (num_layers, batch_size, hidden_size)
-    dummy_h_in = torch.randn(3, 1, 128, device=DEVICE)
-    dummy_c_in = torch.randn(3, 1, 128, device=DEVICE)
-    dummy_inputs = (dummy_img, dummy_desvel, dummy_quat, dummy_h_in, dummy_c_in)
-
-    print("✅ Created dummy inputs for tracing.")
-
-    # --- Step 6: Configure and Run ONNX Export ---
-    onnx_output_path = "ita_model_quantized.onnx"
-    input_names = ["image", "additional_data", "quat_data", "h_in", "c_in"]
-    output_names = ["final_output", "h_out", "c_out"]
-    dynamic_axes = {
-        'image': {0: 'batch_size'}, 'additional_data': {0: 'batch_size'},
-        'quat_data': {0: 'batch_size'}, 'h_in': {1: 'batch_size'},
-        'c_in': {1: 'batch_size'}, 'final_output': {0: 'batch_size'},
-        'h_out': {1: 'batch_size'}, 'c_out': {1: 'batch_size'},
-    }
-
-    print(f"📦 Exporting model to ONNX at: {onnx_output_path}")
-    torch.onnx.export(
-        model, dummy_inputs, onnx_output_path,
-        input_names=input_names, output_names=output_names,
-        opset_version=17, dynamic_axes=dynamic_axes,
-        verbose=False
+    img_data = torch.randn(batch_size, 1, 60, 90, requires_grad=False)
+    additional_data = torch.randn(batch_size, 1, requires_grad=False)
+    quat_data = torch.randn(batch_size, 4, requires_grad=False)
+    
+    # LSTM hidden state: (num_layers, batch_size, hidden_size)
+    hidden_state = (
+        torch.randn(3, batch_size, 128, requires_grad=False),
+        torch.randn(3, batch_size, 128, requires_grad=False)
     )
-    print("✅ Export complete.")
+    
+    dummy_input = [img_data, additional_data, quat_data, hidden_state]
 
-    # --- Step 7: Verify and Test the ONNX Model ---
-    print("🔬 Verifying and testing the exported ONNX model...")
-    onnx_model = onnx.load(onnx_output_path)
-    onnx.checker.check_model(onnx_model)
-    ort_session = onnxruntime.InferenceSession(onnx_output_path)
-    ort_inputs = {name: tensor.numpy() for name, tensor in zip(input_names, dummy_inputs)}
-    ort_outs = ort_session.run(None, ort_inputs)
-    print("✅ ONNX Runtime inference test successful.")
-    print(f"   - Output shape: {ort_outs[0].shape}")
-    print("\n🎉 Successfully exported and verified the quantized model!")
+    # --- Step 4: Export to ONNX ---
+    
+    output_onnx_path = "ita_model_for_hardware.onnx"
+    print(f"Exporting model to {output_onnx_path}...")
+    
+    torch.onnx.export(
+        model_for_export,
+        (dummy_input,),
+        output_onnx_path,
+        export_params=True,
+        opset_version=17,  # A reasonably modern opset version
+        do_constant_folding=True,
+        input_names=['image', 'additional_data', 'quat_data', 'hidden_in_h', 'hidden_in_c'],
+        output_names=['output', 'hidden_out_h', 'hidden_out_c'],
+        dynamic_axes={
+            'image': {0: 'batch_size'},
+            'additional_data': {0: 'batch_size'},
+            'quat_data': {0: 'batch_size'},
+            'output': {0: 'batch_size'}
+        }
+    )
+    
+    print("--- ONNX Export Complete! --- ✅")
+    print(f"Model saved to: {os.path.abspath(output_onnx_path)}")
+    
+    print("\n✅ Step 4: Exporting to MLIR...")
+    print("To convert the quantized ONNX model to MLIR, run the following command in your terminal:")
+    print("-" * 70)
+    # Use IREE's (Intermediate Representation and Execution Environment) tool
+    # You may need to add flags to target your specific hardware accelerator,
+    # for example: --iree-hal-target-backends=...
+    mlir_command = f"iree-import-onnx {QUANTIZED_ONNX_PATH} --opset-version 17 -o {MLIR_PATH} "
+    print(f"👉 \033[1m{mlir_command}\033[0m")
+    print("-" * 70)
+    print("\nPTQ process with ONNX and MLIR export instructions are complete! 🎉")
 
 
 if __name__ == "__main__":

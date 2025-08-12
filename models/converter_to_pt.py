@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-
+import torch
 import sys
 import os
 
@@ -7,14 +7,12 @@ import os
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
-import torch
-import os
 
 # 1. IMPORT YOUR MODEL'S CLASS DEFINITION
 # ==========================================
 # IMPORTANT: Change 'your_model_file' to the name of the Python file
 # where your LSTMNetVIT class is defined.
-from third_party.vitfly.models.model import LSTMNetVIT
+from third_party.vitfly_FPGA.models.model import LSTMNetVIT
 
 # --- Configuration ---
 PTH_WEIGHTS_PATH = "ViTLSTM_model.pth"
