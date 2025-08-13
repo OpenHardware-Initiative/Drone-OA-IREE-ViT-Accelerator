@@ -34,6 +34,7 @@ MANIFEST
 
 # Ignore training set
 train_set/ 
+training/data/*
 
 # Installer logs
 pip-log.txt
@@ -181,6 +182,11 @@ cython_debug/
 
 training/logs
 training/datasets/
-training/data/*
+training/small_data
+data_*
+training/data/
 
 .python-version
+
+# IREE
+compilation_phases/
