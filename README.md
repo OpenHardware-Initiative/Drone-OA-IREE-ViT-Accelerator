@@ -23,10 +23,11 @@
     mkdir build
     cmake \
         -G Ninja \
-        -B build/ \
+        -B $HOST_BUILD_DIR \
         -S third_party/iree \
         -DIREE_CMAKE_PLUGIN_PATHS=$PWD \
-        -DCMAKE_INSTALL_PREFIX=./build/ \
+        -DCMAKE_INSTALL_PREFIX=$HOST_INSTALL_DIR \
+        -DCMAKE_INSTALL_PREFIX=./build-host/install \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DIREE_BUILD_PYTHON_BINDINGS=ON \
         -DPython3_EXECUTABLE="$CONDA_PREFIX/bin/python" \
