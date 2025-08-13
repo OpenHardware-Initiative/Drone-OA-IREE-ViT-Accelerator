@@ -7,3 +7,6 @@
 [submodule "third_party/vitfly_FPGA"]
 	path = third_party/vitfly_FPGA
 	url = https://github.com/OpenHardware-Initiative/vitfly-FPGA.git
+[submodule "third_party/kria_inference"]
+	path = third_party/kria_inference
+	url = https://github.com/OpenHardware-Initiative/kria-inference.git
