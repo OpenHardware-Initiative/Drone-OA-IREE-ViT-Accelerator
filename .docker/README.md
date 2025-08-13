@@ -7,3 +7,5 @@ wget -c -O kria-sysroot.tar.xz https://people.canonical.com/~platform/images/xil
 ```
 
 Be sure to run this command from the `./docker` folder
+
+More information for AMD LTS ubuntu images, sysroots, etc. can be found [here](https://ubuntu.com/download/amd).
