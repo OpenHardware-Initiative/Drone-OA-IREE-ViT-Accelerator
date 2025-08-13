@@ -190,3 +190,6 @@ training/data/
 
 # IREE
 compilation_phases/
+build-host/
+install-host/
+install-kria/
