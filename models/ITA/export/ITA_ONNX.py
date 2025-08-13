@@ -16,22 +16,26 @@ class DummyITASelfAttention(nn.Module):
     """A dummy module that mimics the output shape of ITASelfAttention."""
     def __init__(self):
         super().__init__()
+        
+        #self.identity_attention = nn.Identity()
 
     def forward(self, x):
         # The attention block does not change the tensor shape
         # In: [B, N, C], Out: [B, N, C]
         # We return random data to signify this part is handled by hardware.
-        return torch.randn_like(x)
+        return torch.neg(x)
 
 class DummyITAFeedForward(nn.Module):
     """A dummy module that mimics the output shape of ITAFeedForward."""
     def __init__(self):
         super().__init__()
         
+        #self.identity_FF = nn.Identity()
+        
     def forward(self, x):
         # The FFN block also does not change the tensor shape
         # In: [B, N, C], Out: [B, N, C]
-        return torch.randn_like(x)
+        return torch.abs(x)
 
 
 class ITAForONNXExport(nn.Module):

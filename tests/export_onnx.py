@@ -13,8 +13,10 @@ sys.path.insert(0, PROJECT_ROOT)
 from models.ITA.QAT.model import ITALSTMNetVIT_QAT
 from models.ITA.export.ITA_ONNX import ITAForONNXExport
 
-QUANTIZED_ONNX_PATH = "ita_model_for_hardware.onnx"
-MLIR_PATH = "ita_model_for_hardware.mlir"
+#OUTPUT_BASE_LOCATION = os.path.join(PROJECT_ROOT, "output", "ITA_FPGA", "simvectors")
+
+QUANTIZED_ONNX_PATH = f"{PROJECT_ROOT}/output/ita_model_for_hardware.onnx"
+MLIR_PATH = f"{PROJECT_ROOT}/output/ita_model_for_hardware.mlir"
 
 def main():
     """
@@ -26,8 +28,8 @@ def main():
     # --- Step 1: Load the trained and quantized model state ---
     
     # Path to the saved model from your QAT run
-    trained_model_path = "/home/coppholl/Projects/Drone-OA-IREE-ViT-Accelerator/training/logs/d08_11_t16_00_qat_replace_model/model_quantized_final.pth"
-    
+    trained_model_path = f"{PROJECT_ROOT}/training/logs/d08_11_t16_00_qat_replace_model/model_quantized_final.pth"
+    print(f"Loading trained quantized model from: {trained_model_path}")
     if not os.path.exists(trained_model_path):
         print(f"Error: Trained model not found at {trained_model_path}")
         return
@@ -72,28 +74,22 @@ def main():
 
     # --- Step 4: Export to ONNX ---
     
-    output_onnx_path = "ita_model_for_hardware.onnx"
-    print(f"Exporting model to {output_onnx_path}...")
+    print(f"Exporting model to {QUANTIZED_ONNX_PATH}...")
     
     torch.onnx.export(
         model_for_export,
         (dummy_input,),
-        output_onnx_path,
+        QUANTIZED_ONNX_PATH,
         export_params=True,
         opset_version=17,  # A reasonably modern opset version
         do_constant_folding=True,
         input_names=['image', 'additional_data', 'quat_data', 'hidden_in_h', 'hidden_in_c'],
         output_names=['output', 'hidden_out_h', 'hidden_out_c'],
-        dynamic_axes={
-            'image': {0: 'batch_size'},
-            'additional_data': {0: 'batch_size'},
-            'quat_data': {0: 'batch_size'},
-            'output': {0: 'batch_size'}
-        }
+        #dynamo=True
     )
     
     print("--- ONNX Export Complete! --- ✅")
-    print(f"Model saved to: {os.path.abspath(output_onnx_path)}")
+    print(f"Model saved to: {os.path.abspath(QUANTIZED_ONNX_PATH)}")
     
     print("\n✅ Step 4: Exporting to MLIR...")
     print("To convert the quantized ONNX model to MLIR, run the following command in your terminal:")
