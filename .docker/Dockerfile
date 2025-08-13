@@ -89,10 +89,10 @@
     COPY kria.toolchain.cmake /opt/kria.toolchain.cmake
     
     # Add the Kria sysroot to the image in a structured path
-    COPY iot-limerick-kria-classic-desktop-2204-classic-22.04-kr10-20240304-165-sysroot.tar.xz /tmp/
+    COPY kria-sysroot.tar.xz /tmp/
     RUN mkdir -p /opt/sysroot && \
-        tar -xvf /tmp/iot-limerick-kria-classic-desktop-2204-classic-22.04-kr10-20240304-165-sysroot.tar.xz -C /opt/sysroot && \
-        rm /tmp/iot-limerick-kria-classic-desktop-2204-classic-22.04-kr10-20240304-165-sysroot.tar.xz
+        tar -xvf /tmp/kria-sysroot.tar.xz -C /opt/sysroot && \
+        rm /tmp/kria-sysroot.tar.xz
     
     # Set up environment variables
     ENV CMAKE_TOOLCHAIN_FILE=/opt/kria.toolchain.cmake

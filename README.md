@@ -30,7 +30,6 @@
         -DCMAKE_INSTALL_PREFIX=./build-host/install \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DIREE_BUILD_PYTHON_BINDINGS=ON \
-        -DPython3_EXECUTABLE="$CONDA_PREFIX/bin/python" \
         -DIREE_ENABLE_ASSERTIONS=ON \
         -DIREE_ENABLE_SPLIT_DWARF=ON \
         -DIREE_ENABLE_THIN_ARCHIVES=ON \
@@ -92,3 +91,41 @@ The noteebok `onnx_model_example.ipynb` is supposed to be replace the original v
 ## Visualizing the model
 
 You can either download a SVG visualization extension for VSCode called `Svg Preview` (look inside `/media`) or the NN visualization extension from ONNX called `ONNX Viewer` (look inside `/models`).
+
+
+# TODO for documentation:
+
+[ ] Include global variables for things like conda env or other similar things so that we can just call those in the documentation
+[ ] Remove all absolute paths (in python scripts we can always build starting from `$PROJECT_ROOT`)
+
+
+# Build in Docker:
+
+```bash
+cmake \
+        -G Ninja \
+        -B $HOST_BUILD_DIR \
+        -S third_party/iree \
+        -DIREE_CMAKE_PLUGIN_PATHS=$PWD \
+        -DCMAKE_INSTALL_PREFIX=$HOST_INSTALL_DIR \
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+        -DIREE_BUILD_PYTHON_BINDINGS=OFF \
+        -DIREE_ENABLE_ASSERTIONS=ON \
+        -DIREE_ENABLE_SPLIT_DWARF=ON \
+        -DIREE_ENABLE_THIN_ARCHIVES=ON \
+        -DCMAKE_C_COMPILER=clang \
+        -DCMAKE_CXX_COMPILER=clang++ \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+        -DIREE_TARGET_BACKEND_DEFAULTS=OFF \
+        -DIREE_TARGET_BACKEND_LLVM_CPU=ON \
+        -DIREE_HAL_DRIVER_DEFAULTS=OFF \
+        -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
+        -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
+        -DIREE_BUILD_TESTS=OFF \
+        -DIREE_BUILD_SAMPLES=ON 
+```
+
+```bash
+cmake --build "${HOST_BUILD_DIR}" --target install
+```

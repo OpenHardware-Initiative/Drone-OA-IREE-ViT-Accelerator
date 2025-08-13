@@ -1,40 +1,72 @@
-# CMakeLists.txt
-cmake_minimum_required(VERSION 3.20)
-project(fpga_iree_project CXX C) # Changed project name for clarity
+#samples/inference/CMakeLists.txt
+# This file is designed to be included by the main IREE build system.
 
-set(CMAKE_CXX_STANDARD 17)
+# This sample requires these components. The main IREE build will check this.
+if(NOT IREE_TARGET_BACKEND_LLVM_CPU OR NOT IREE_HAL_DRIVER_LOCAL_SYNC)
+  return()
+endif()
 
-# Find IREE package. This works seamlessly inside your Docker container.
-find_package(IREE REQUIRED CONFIG)
-
-# --- Stage 1: Compile the MLIR model (This section is shared) ---
-# (This section is identical to the previous CMakeLists.txt)
-set(IREE_COMPILE_ARGS
-  "--iree-input-type=stablehlo"
-  "--iree-hal-target-backends=llvm-cpu"
-  "--iree-llvmcpu-target-triple=aarch64-linux-gnu"
-  "--iree-llvmcpu-target-cpu=cortex-a53"
-  "--iree-llvmcpu-target-cpu-features=+neon,+crypto,+fp-armv8"
-  "--iree-llvmcpu-link-static"
-  "--iree-vm-target-index-bits=64"
-)
+# --- 1. Define Model and Compilation Arguments ---
 set(MODEL_BASE_NAME "ITAViTLSTM")
+
+# Define the path to your model RELATIVE TO THE PROJECT ROOT, NOT this directory.
+# CMAKE_CURRENT_SOURCE_DIR is samples/inference. We go up two levels.
+set(MODEL_FILE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../output/ITAViTLSTM.mlir")
+
 set(STATIC_LIB_OBJECT_FILE "${MODEL_BASE_NAME}_static_lib.o")
 set(STATIC_LIB_HEADER_FILE "${MODEL_BASE_NAME}_static_lib.h")
 set(VMFB_FILE "${MODEL_BASE_NAME}.vmfb")
-set(MODEL_FILE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/output/ITAViTLSTM.mlir")
-list(APPEND IREE_COMPILE_ARGS "--iree-llvmcpu-static-library-output-path=${STATIC_LIB_OBJECT_FILE}")
+
+# Setup the exact compile args from your working command
+set(_COMPILE_ARGS
+  "--iree-hal-target-backends=llvm-cpu"
+  "--iree-llvmcpu-target-triple=aarch64-linux-gnu"
+  "--iree-llvmcpu-target-cpu=cortex-a53"
+  "--iree-llvmcpu-target-cpu-features=+neon,+fp-armv8,+crypto"
+  "--iree-llvmcpu-link-static"
+  "--iree-llvmcpu-static-library-output-path=${STATIC_LIB_OBJECT_FILE}"
+  "--iree-dispatch-creation-enable-aggressive-fusion=false"
+  "--iree-input-demote-f32-to-f16"
+)
+
+# --- 2. Create the Model Artifacts using a Custom Command ---
+# This command runs the HOST's iree-compile during the build.
 add_custom_command(
-  OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${STATIC_LIB_OBJECT_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/${STATIC_LIB_HEADER_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/${VMFB_FILE}"
-  COMMAND ${IREE_HOST_BIN_DIR}/iree-compile ${IREE_COMPILE_ARGS} "${MODEL_FILE_PATH}" -o "${VMFB_FILE}"
-  DEPENDS ${MODEL_FILE_PATH}
-  COMMENT "Compiling ${MODEL_FILE_PATH} to a static library and VMFB"
+  OUTPUT
+    "${CMAKE_CURRENT_BINARY_DIR}/${STATIC_LIB_HEADER_FILE}"
+    "${CMAKE_CURRENT_BINARY_DIR}/${STATIC_LIB_OBJECT_FILE}"
+    "${CMAKE_CURRENT_BINARY_DIR}/${VMFB_FILE}"
+  COMMAND
+    # IREE_HOST_BIN_DIR is provided automatically by the main build
+    ${IREE_HOST_BIN_DIR}/iree-compile
+    ${_COMPILE_ARGS}
+    "${MODEL_FILE_PATH}"
+    -o "${VMFB_FILE}"
+  DEPENDS
+    ${MODEL_FILE_PATH}
+  COMMENT "Compiling ${MODEL_FILE_PATH} for the target"
   COMMAND_WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
   VERBATIM
 )
-add_custom_target(compile_model ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/${VMFB_FILE}")
 
-# --- Stage 2: Embed the .vmfb file (This section is shared) ---
+# This custom target ensures the command above is actually run.
+add_custom_target(compile_inference_model ALL
+  DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/${VMFB_FILE}"
+)
+
+# --- 3. Wrap the Generated Artifacts in Proper CMake Targets ---
+
+# Create a STATIC library target from the .o file
+add_library(${MODEL_BASE_NAME}_static_lib STATIC
+  IMPORTED
+  GLOBAL
+)
+set_target_properties(${MODEL_BASE_NAME}_static_lib PROPERTIES
+  IMPORTED_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/${STATIC_LIB_OBJECT_FILE}"
+)
+add_dependencies(${MODEL_BASE_NAME}_static_lib compile_inference_model)
+
+# Embed the VMFB bytecode into a C source file.
 iree_c_embed_data(
   NAME ${MODEL_BASE_NAME}_c
   IDENTIFIER ${MODEL_BASE_NAME}
@@ -44,35 +76,31 @@ iree_c_embed_data(
   FLATTEN
   PUBLIC
 )
-add_dependencies(iree-c-${MODEL_BASE_NAME}_c compile_model)
+add_dependencies(iree-c-${MODEL_BASE_NAME}_c compile_inference_model)
 
-# --- Stage 3: Build the executables ---
-
-# Target 1: The UDP network server
-add_executable(fpga_server
-  src/server.cpp
-)
-
-# Target 2: The self-contained inference test
-add_executable(test_inference
-  src/test_inference.cpp
-)
-
-# Link both targets to the same common dependencies
-foreach(TARGET IN ITEMS fpga_server test_inference)
-  target_include_directories(${TARGET} PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}" # For generated headers
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"
-  )
-  # Both targets need the compiled model object file
-  target_sources(${TARGET} PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/${STATIC_LIB_OBJECT_FILE}"
-  )
-  target_link_libraries(${TARGET} PRIVATE
-    iree::runtime
+# --- 4. Build the Final Executable using IREE's helper ---
+iree_cc_binary(
+  NAME
+    test_inference_with_data
+  SRCS
+    # The source file is in the same directory as this CMakeLists.txt
+    "main.cpp"
+  DEPS
+    # Link against the targets we just created
+    ::${MODEL_BASE_NAME}_c
+    ${MODEL_BASE_NAME}_static_lib
+    # Link against the core IREE libraries
+    iree::base
     iree::hal
-    iree::hal-local-sync
-    iree::hal::loaders::static_library_loader
-    iree-c-${MODEL_BASE_NAME}_c # Link the embedded bytecode
-  )
-endforeach()
+    iree::hal::local
+    iree::hal::local::loaders::static_library_loader
+    iree::hal::drivers::local_sync
+    iree::vm::bytecode::module
+    iree::runtime
+)
+
+# Set the include directories for our executable
+target_include_directories(test_inference_with_data PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}" # For generated headers like ITAViTLSTM_c.h
+  "${CMAKE_CURRENT_SOURCE_DIR}"   # Allows #include "include/stb_image.h"
+)
