@@ -9,7 +9,7 @@
 # --- Stage 1: Base Setup and Core System Tools ---
     FROM ubuntu:22.04 AS base
     ENV DEBIAN_FRONTEND=noninteractive
-    RUN apt-get update && apt-get install -y --no-install-recommends \
+    RUN  apt-get update && apt-get install -y --no-install-recommends \
           # Core build and system tools
           build-essential \
           git \
@@ -17,6 +17,7 @@
           wget \
           gnupg \
           ninja-build \
+          graphviz \
           software-properties-common \
           pkg-config \
           # Libcurl development files for CMake build
@@ -62,6 +63,8 @@
         # Set Clang 18 as the default clang/clang++
         update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 180 --slave /usr/bin/clang++ clang++ /usr/bin/clang++-18 && \
         rm -rf /var/lib/apt/lists/*
+
+
     
     # --- Stage 3: Build and Install CMake from Source ---
     FROM compilers AS cmake_build
@@ -71,9 +74,19 @@
         cd cmake-3.29.3/ && \
         ./bootstrap --system-curl && make -j$(nproc) && make install && hash -r && \
         cd / && rm -rf /usr/src/cmake-3.29.3.tar.gz /usr/src/cmake-3.29.3
+
+    # --- Stage 4: Build and Install FlatBuffers (for flatc compiler) ---
+    # IREE requires the flatc compiler to process .fbs files.
+    FROM cmake_build AS flatbuffers_build
+    RUN cd /usr/src && \
+        git clone --depth 1 --branch v24.3.25 https://github.com/google/flatbuffers.git && \
+        cd flatbuffers && \
+        cmake -B build -G "Ninja" . && \
+        cmake --build build --target install && \
+        cd / && rm -rf /usr/src/flatbuffers
     
-    # --- Stage 4: Install Python 3.10 and Dependencies ---
-    FROM cmake_build AS python_build
+    # --- Stage 5: Install Python 3.10 and Dependencies ---
+    FROM flatbuffers_build AS python_build
     RUN add-apt-repository ppa:deadsnakes/ppa -y && \
         apt-get update && \
         apt-get install -y python3.10 python3.10-dev python3.10-venv python3-pip && \
@@ -82,7 +95,7 @@
         'numpy>=2.0.0b1' 'requests>=2.28.0' 'wheel>=0.36.2' 'sympy==1.12.1' && \
         rm -rf /var/lib/apt/lists/*
     
-    # --- Stage 5: Final Environment Setup for Cross-Compilation ---
+    # --- Stage 6: Final Environment Setup for Cross-Compilation ---
     FROM python_build AS final_image
     
     # Copy the CMake toolchain file into the image
@@ -95,9 +108,16 @@
         rm /tmp/kria-sysroot.tar.xz
     
     # Set up environment variables
+    ENV PATH="/usr/local/bin:${PATH}"
+    ENV WORKSPACE_DIR=/workspace
+    ENV BUILD_HOST_DIR=${WORKSPACE_DIR}/build-host
+    ENV INSTALL_HOST_DIR=${BUILD_HOST_DIR}/install
+    ENV BUILD_KRIA_DIR=${WORKSPACE_DIR}/build-kria
+    ENV INSTALL_KRIA_DIR=${BUILD_KRIA_DIR}/install
     ENV CMAKE_TOOLCHAIN_FILE=/opt/kria.toolchain.cmake
+    RUN mkdir -p ${BUILD_HOST_DIR} ${INSTALL_HOST_DIR} ${BUILD_KRIA_DIR} ${INSTALL_KRIA_DIR}
     
-    # --- Stage 6: Entrypoint and Welcome Message ---
+    # --- Stage 7: Entrypoint and Welcome Message ---
     RUN echo '#!/bin/bash' > /usr/local/bin/entrypoint.sh && \
         echo 'echo "================================================================="' >> /usr/local/bin/entrypoint.sh && \
         echo 'echo "  Welcome to the Custom Kria Cross-Compilation Environment"' >> /usr/local/bin/entrypoint.sh && \
@@ -105,9 +125,16 @@
         echo 'echo "GCC:       $(gcc --version | head -n 1)"' >> /usr/local/bin/entrypoint.sh && \
         echo 'echo "Clang:     $(clang --version | head -n 1)"' >> /usr/local/bin/entrypoint.sh && \
         echo 'echo "CMake:     $(cmake --version | head -n 1)"' >> /usr/local/bin/entrypoint.sh && \
+        echo 'echo "FlatC:     $(flatc --version 2>&1)"' >> /usr/local/bin/entrypoint.sh && \
         echo 'echo "Python:    $(python3 --version)"' >> /usr/local/bin/entrypoint.sh && \
         echo "echo 'Toolchain: ${CMAKE_TOOLCHAIN_FILE}'" >> /usr/local/bin/entrypoint.sh && \
         echo 'echo "Sysroot:   /opt/sysroot"' >> /usr/local/bin/entrypoint.sh && \
+        echo 'echo "================================================================="' >> /usr/local/bin/entrypoint.sh && \
+        echo 'echo "Available Build Environment Variables:"' >> /usr/local/bin/entrypoint.sh && \
+        echo 'echo "- BUILD_HOST_DIR:   ${BUILD_HOST_DIR}"' >> /usr/local/bin/entrypoint.sh && \
+        echo 'echo "- INSTALL_HOST_DIR: ${INSTALL_HOST_DIR}"' >> /usr/local/bin/entrypoint.sh && \
+        echo 'echo "- BUILD_KRIA_DIR:   ${BUILD_KRIA_DIR}"' >> /usr/local/bin/entrypoint.sh && \
+        echo 'echo "- INSTALL_KRIA_DIR: ${INSTALL_KRIA_DIR}"' >> /usr/local/bin/entrypoint.sh && \
         echo 'echo "================================================================="' >> /usr/local/bin/entrypoint.sh && \
         echo 'exec "$@"' >> /usr/local/bin/entrypoint.sh && \
         chmod +x /usr/local/bin/entrypoint.sh

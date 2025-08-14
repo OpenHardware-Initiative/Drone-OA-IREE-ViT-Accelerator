@@ -99,14 +99,19 @@ You can either download a SVG visualization extension for VSCode called `Svg Pre
 [ ] Remove all absolute paths (in python scripts we can always build starting from `$PROJECT_ROOT`)
 
 
-# Build in Docker:
+# Build host:
+
+1. Set macros (from repo level):
+```bash
+export BUILD_HOST_DIR=build-host
+export INSTALL_HOST_DIR=build-host/install
+```
 
 ```bash
 cmake \
         -G Ninja \
         -B $HOST_BUILD_DIR \
         -S third_party/iree \
-        -DIREE_CMAKE_PLUGIN_PATHS=$PWD \
         -DCMAKE_INSTALL_PREFIX=$HOST_INSTALL_DIR \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DIREE_BUILD_PYTHON_BINDINGS=OFF \
@@ -123,9 +128,32 @@ cmake \
         -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
         -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
         -DIREE_BUILD_TESTS=OFF \
-        -DIREE_BUILD_SAMPLES=ON 
+        -DIREE_BUILD_SAMPLES=OFF 
 ```
 
 ```bash
 cmake --build "${HOST_BUILD_DIR}" --target install
+```
+
+
+For the kria docker commands:
+
+```bash
+cmake \
+    -G Ninja \
+    -B $BUILD_KRIA_DIR \
+    -S third_party/iree \
+    -DCMAKE_TOOLCHAIN_FILE=/opt/kria.toolchain.cmake \
+    -DIREE_HOST_BIN_DIR=$INSTALL_HOST_DIR/bin \
+    -DIREE_CMAKE_PLUGIN_PATHS=$PWD \
+    -DCMAKE_INSTALL_PREFIX=$INSTALL_KRIA_DIR \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DIREE_BUILD_COMPILER=OFF \
+    -DIREE_BUILD_SAMPLES=ON \
+    -DIREE_BUILD_TESTS=OFF \
+    -DIREE_BUILD_PYTHON_BINDINGS=OFF \
+    -DIREE_TARGET_BACKEND_DEFAULTS=OFF \
+    -DIREE_TARGET_BACKEND_LLVM_CPU=ON \
+    -DIREE_HAL_DRIVER_DEFAULTS=OFF \
+    -DIREE_HAL_DRIVER_LOCAL_SYNC=ON
 ```
