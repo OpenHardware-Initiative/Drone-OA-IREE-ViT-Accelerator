@@ -20,6 +20,8 @@
           graphviz \
           software-properties-common \
           pkg-config \
+          # QEMU for running cross-compiled binaries
+          qemu-user-static \
           # Libcurl development files for CMake build
           libcurl4-openssl-dev \
           # Python build dependencies
