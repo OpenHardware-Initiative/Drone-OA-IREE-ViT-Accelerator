@@ -168,6 +168,8 @@ UPDATE:
 
 cmake     -G Ninja     -B $BUILD_KRIA_DIR     -S third_party/iree     -DCMAKE_TOOLCHAIN_FILE=/opt/kria.toolchain.cmake     -DIREE_HOST_BIN_DIR=$INSTALL_HOST_DIR/bin     -DIREE_CMAKE_PLUGIN_PATHS=$PWD     -DCMAKE_INSTALL_PREFIX=$INSTALL_KRIA_DIR     -DCMAKE_BUILD_TYPE=RelWithDebInfo     -DIREE_BUILD_COMPILER=OFF     -DIREE_BUILD_SAMPLES=ON     -DIREE_BUILD_TESTS=OFF     -DIREE_BUILD_PYTHON_BINDINGS=OFF     -DIREE_TARGET_BACKEND_DEFAULTS=OFF     -DIREE_TARGET_BACKEND_LLVM_CPU=ON     -DIREE_HAL_DRIVER_DEFAULTS=OFF -DIREE_HAL_DRIVER_LOCAL_SYNC=ON
 
+cmake --build ${BUILD_KRIA_DIR} --target ITAViTLSTM_test_data
+
 qemu-aarch64-static -L /opt/sysroot/sysroots/aarch64-xilinix-linux \
     /workspace/build-kria/runtime/plugins/ita-samples/inference/ITAViTLSTM_test_data \
     /workspace/output/ITAViTLSTM_f16.vmfb \

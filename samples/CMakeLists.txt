@@ -1,3 +1,3 @@
 
 
-add_subdirectory(inference)
+add_subdirectory(inference_trainset_comparison)

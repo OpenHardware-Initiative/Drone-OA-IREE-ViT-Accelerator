@@ -194,6 +194,7 @@ build-host/
 build-kria/
 install-host/
 install-kria/
+build-*
 
 # Docker
 .docker/kria-sysroot.tar.xz

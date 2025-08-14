@@ -22,6 +22,9 @@
           pkg-config \
           # QEMU for running cross-compiled binaries
           qemu-user-static \
+          gdb-multiarch \
+          tmux \
+          vim \
           # Libcurl development files for CMake build
           libcurl4-openssl-dev \
           # Python build dependencies
