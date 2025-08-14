@@ -1,3 +1,4 @@
 
 
-add_subdirectory(inference_trainset_comparison)
+add_subdirectory(inference_trainingset_comparison)
+add_subdirectory(inference_udp_FPGA)

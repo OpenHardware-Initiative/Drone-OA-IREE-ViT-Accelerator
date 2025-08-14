@@ -1,6 +1,6 @@
 # --- 1. Build the Final Executable ---
 
-set(_NAME "ITAViTLSTM_test_data")
+set(_NAME "inference_udp_FPGA")
 add_executable(${_NAME} "")
 
 target_sources(${_NAME} PRIVATE
@@ -9,17 +9,17 @@ target_sources(${_NAME} PRIVATE
 
 target_compile_features(${_NAME} PRIVATE cxx_std_17)
 
-# --- 2. Define Third-Party Dependencies (stb_lib) ---
-add_library(stb_lib INTERFACE)
-target_include_directories(stb_lib INTERFACE
+# --- 2. Define Third-Party Dependencies (stb_image) ---
+add_library(stb_image INTERFACE)
+target_include_directories(stb_image INTERFACE
   "${IREE_ITA_SOURCE_DIR}/samples/inference/include"
 )
-target_compile_definitions(stb_lib INTERFACE stb_lib_IMPLEMENTATION)
+target_compile_definitions(stb_image INTERFACE STB_IMAGE_IMPLEMENTATION)
 
 # --- 3. Link Libraries ---
 target_link_libraries(${_NAME} PRIVATE
   # Third party libraries
-  stb_lib
+  stb_image
   stdc++fs
 
   # The high-level IREE runtime library that pulls in all configured dependencies
