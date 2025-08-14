@@ -49,6 +49,8 @@ const size_t SEND_PACKET_SIZE =
     IMAGE_SIZE + VELOCITY_SIZE + POSX_SIZE + QUAT_SIZE; // 5424 bytes
 const size_t REPLY_PACKET_SIZE = VEL_CMD_SIZE;
 
+typedef uint16_t half_float_t;
+
 // --- Data Structures ---
 struct TelemetryData {
     float desired_velocity;
@@ -77,6 +79,8 @@ extern "C" iree_status_t iree_allocator_libc_ctl(
     void* self, iree_allocator_command_t command,
     const void* params, void** inout_ptr);
 
+
+
 iree_status_t create_tensor_view(iree_hal_device_t* device, const void* data, const iree_hal_dim_t* shape, iree_host_size_t shape_rank, iree_hal_element_type_t element_type, iree_hal_buffer_view_t** out_buffer_view);
 std::vector<float> print_output_tensor(iree_hal_buffer_view_t* view);
 bool load_telemetry_for_image(const std::filesystem::path& csv_path, const std::string& image_timestamp_str, TelemetryData& out_telemetry);
@@ -84,6 +88,7 @@ ReceivedPacket unpack_frame(const char *packet);
 std::array<float, 3>calculate_final_velocity(float* raw_output,
                          float desired_vel, float pos_x);
 std::vector<unsigned char> pack_reply(float* velocity_cmd);
+iree_status_t convert_f16_view_to_f32_view(iree_hal_device_t* device, iree_hal_buffer_view_t* f16_view, iree_hal_buffer_view_t** out_f32_view);
 
 // --- Main Application ---
 int main(int argc, char** argv) {
@@ -268,8 +273,29 @@ inline void swap_endian_4(unsigned char *data) {
   std::swap(data[1], data[2]);
 }
 
+float half_to_float32(half_float_t h) {
+    union { float f; uint32_t u; } p;
+    uint32_t sign = (h >> 15) & 1;
+    uint32_t exponent = (h >> 10) & 0x1f;
+    uint32_t mantissa = h & 0x3ff;
+    if (exponent == 0) {
+        if (mantissa == 0) { p.u = sign << 31; return p.f; }
+        else {
+            while (!(mantissa & 0x400)) { mantissa <<= 1; exponent--; }
+            exponent++; mantissa &= ~0x400;
+        }
+    } else if (exponent == 31) {
+        p.u = (sign << 31) | 0x7f800000 | (mantissa << 13); return p.f;
+    }
+    exponent = exponent + (127 - 15);
+    mantissa = mantissa << 13;
+    p.u = (sign << 31) | (exponent << 23) | mantissa;
+    return p.f;
+}
+
+
 std::vector<float> print_output_tensor(iree_hal_buffer_view_t* view) {
-    if (!view) { std::cout << "  <null>" << std::endl; return; }
+    if (!view) { std::cout << "  <null>" << std::endl; return {}; }
     iree_hal_buffer_mapping_t mapped_memory;
     IREE_CHECK_OK(iree_hal_buffer_map_range(iree_hal_buffer_view_buffer(view), IREE_HAL_MAPPING_MODE_SCOPED, IREE_HAL_MEMORY_ACCESS_READ, 0, IREE_HAL_WHOLE_BUFFER, &mapped_memory));
     iree_hal_element_type_t element_type = iree_hal_buffer_view_element_type(view);
@@ -390,4 +416,20 @@ calculate_final_velocity(float* raw_output,
 
   // 5. Return the result by value
   return final_velocity;
+}
+
+iree_status_t convert_f16_view_to_f32_view(iree_hal_device_t* device, iree_hal_buffer_view_t* f16_view, iree_hal_buffer_view_t** out_f32_view) {
+    iree_hal_buffer_mapping_t mapped_f16;
+    IREE_RETURN_IF_ERROR(iree_hal_buffer_map_range(
+        iree_hal_buffer_view_buffer(f16_view), IREE_HAL_MAPPING_MODE_SCOPED,
+        IREE_HAL_MEMORY_ACCESS_READ, 0, IREE_HAL_WHOLE_BUFFER, &mapped_f16));
+    iree_host_size_t element_count = iree_hal_buffer_view_element_count(f16_view);
+    std::vector<float> f32_data(element_count);
+    const half_float_t* f16_ptr = (const half_float_t*)mapped_f16.contents.data;
+    for (iree_host_size_t i = 0; i < element_count; ++i) { f32_data[i] = half_to_float32(f16_ptr[i]); }
+    iree_hal_buffer_unmap_range(&mapped_f16);
+    return create_tensor_view(
+        device, f32_data.data(), iree_hal_buffer_view_shape_dims(f16_view),
+        iree_hal_buffer_view_shape_rank(f16_view), IREE_HAL_ELEMENT_TYPE_FLOAT_32,
+        out_f32_view);
 }
