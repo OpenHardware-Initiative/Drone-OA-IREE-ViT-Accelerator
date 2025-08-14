@@ -56,12 +56,17 @@ struct TelemetryData {
 };
 
 struct ReceivedPacket {
-  std::vector<std::vector<uint8_t>> image;
+  std::vector<uint8_t> image;
   float desired_velocity;
   float position_x;
   std::vector<float> quaternion;
 };
 
+// This union is used to convert float to bytes.
+union floatToBytes {
+  float floatValue;
+  unsigned char bytes[4];
+};
 // --- Forward Declarations & Helpers ---
 
 // FINAL FIX #1: Corrected function declaration with "_module".
@@ -73,7 +78,7 @@ extern "C" iree_status_t iree_allocator_libc_ctl(
     const void* params, void** inout_ptr);
 
 iree_status_t create_tensor_view(iree_hal_device_t* device, const void* data, const iree_hal_dim_t* shape, iree_host_size_t shape_rank, iree_hal_element_type_t element_type, iree_hal_buffer_view_t** out_buffer_view);
-void print_output_tensor(iree_hal_buffer_view_t* view);
+void print_output_tensor(iree_hal_buffer_view_t* view,  float* output_data);
 bool load_telemetry_for_image(const std::filesystem::path& csv_path, const std::string& image_timestamp_str, TelemetryData& out_telemetry);
 ReceivedPacket unpack_frame(const char *packet);
 std::array<float, 3>calculate_final_velocity(float* raw_output,
@@ -136,9 +141,9 @@ int main(int argc, char** argv) {
     iree_hal_buffer_view_t* hidden_state_h = NULL;
     iree_hal_buffer_view_t* hidden_state_c = NULL;
     std::vector<char> zero_buffer(3 * 1 * 128 * sizeof(float), 0);
+    const iree_hal_dim_t hidden_shape[] = {3, 1, 128};
     IREE_CHECK_OK(create_tensor_view(device, zero_buffer.data(), hidden_shape, 3, IREE_HAL_ELEMENT_TYPE_FLOAT_32, &hidden_state_h));
     IREE_CHECK_OK(create_tensor_view(device, zero_buffer.data(), hidden_shape, 3, IREE_HAL_ELEMENT_TYPE_FLOAT_32, &hidden_state_c));
-    const iree_hal_dim_t hidden_shape[] = {3, 1, 128};
 
     while (true) {
         // Buffer for incoming packet
@@ -260,8 +265,12 @@ iree_status_t create_tensor_view(iree_hal_device_t* device, const void* data, co
         iree_make_const_byte_span(data, byte_length), out_buffer_view);
 }
 
-void print_output_tensor(iree_hal_buffer_view_t* view, float* 
-) {
+inline void swap_endian_4(unsigned char *data) {
+  std::swap(data[0], data[3]);
+  std::swap(data[1], data[2]);
+}
+
+void print_output_tensor(iree_hal_buffer_view_t* view, float* output_data) {
     if (!view) {
         std::cout << "  <null>" << std::endl;
         return;
@@ -294,11 +303,9 @@ ReceivedPacket unpack_frame(const char *packet) {
   size_t offset = 0;
 
   // Unpack image (5400 bytes)
-  received_packet.image.resize(60, std::vector<uint8_t>(90));
-  for (size_t i = 0; i < 60; ++i) {
-    std::memcpy(received_packet.image[i].data(), packet + offset, 90);
-    offset += 90;
-  }
+  received_packet.image.resize(IMAGE_SIZE);
+  std::memcpy(received_packet.image.data(), packet + offset, IMAGE_SIZE);
+  offset += IMAGE_SIZE;
 
   // Unpack desired velocity (4 bytes, big-endian)
   unsigned char velocity_bytes[VELOCITY_SIZE];
@@ -315,12 +322,12 @@ ReceivedPacket unpack_frame(const char *packet) {
   offset += POSX_SIZE;
 
   // Unpack quaternion (16 bytes, big-endian)
-  received_packet.quat.resize(4);
+  received_packet.quaternion.resize(4);
   for (int i = 0; i < 4; i++) {
     unsigned char quat_bytes[4];
     std::memcpy(quat_bytes, packet + offset, sizeof(quat_bytes));
     swap_endian_4(quat_bytes);
-    received_packet.quat[i] = *reinterpret_cast<float *>(quat_bytes);
+    received_packet.quaternion[i] = *reinterpret_cast<float *>(quat_bytes);
     offset += sizeof(QUAT_SIZE / 4);
   }
 
@@ -330,7 +337,6 @@ ReceivedPacket unpack_frame(const char *packet) {
 inline void htonf_noswap(float value, unsigned char *buffer) {
   floatToBytes ftb;
   ftb.floatValue = value;
-  swap_endian_4(ftb.bytes);
   std::memcpy(buffer, ftb.bytes, 4);
 }
 
@@ -348,11 +354,19 @@ float frobenius_norm(const std::array<float, 3> &vec) {
   return std::sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
 }
 
+template <typename T> T clip(T value, T lower_bound, T upper_bound) {
+  return std::min(std::max(value, lower_bound), upper_bound);
+}
+
+
 std::array<float, 3>
 calculate_final_velocity(float* raw_output,
                          float desired_vel, float pos_x) {
   // 1. Create a copy of the input vector to avoid modifying the original
-  std::array<float, 3> final_velocity = raw_output;
+  std::array<float, 3> final_velocity;
+  for (size_t i = 0; i < final_velocity.size(); ++i) {
+      final_velocity[i] = raw_output[i];
+  }
 
   // 2. Clip the first component and normalize the vector
   final_velocity[0] = clip(final_velocity[0], -1.0f, 1.0f);
