@@ -76,6 +76,9 @@ iree_status_t create_tensor_view(iree_hal_device_t* device, const void* data, co
 void print_output_tensor(iree_hal_buffer_view_t* view);
 bool load_telemetry_for_image(const std::filesystem::path& csv_path, const std::string& image_timestamp_str, TelemetryData& out_telemetry);
 ReceivedPacket unpack_frame(const char *packet);
+std::array<float, 3>calculate_final_velocity(float* raw_output,
+                         float desired_vel, float pos_x);
+std::vector<unsigned char> pack_reply(float* velocity_cmd);
 
 // --- Main Application ---
 int main(int argc, char** argv) {
