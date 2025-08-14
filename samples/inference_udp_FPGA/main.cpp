@@ -78,7 +78,7 @@ extern "C" iree_status_t iree_allocator_libc_ctl(
     const void* params, void** inout_ptr);
 
 iree_status_t create_tensor_view(iree_hal_device_t* device, const void* data, const iree_hal_dim_t* shape, iree_host_size_t shape_rank, iree_hal_element_type_t element_type, iree_hal_buffer_view_t** out_buffer_view);
-void print_output_tensor(iree_hal_buffer_view_t* view,  float* output_data);
+std::vector<float> print_output_tensor(iree_hal_buffer_view_t* view);
 bool load_telemetry_for_image(const std::filesystem::path& csv_path, const std::string& image_timestamp_str, TelemetryData& out_telemetry);
 ReceivedPacket unpack_frame(const char *packet);
 std::array<float, 3>calculate_final_velocity(float* raw_output,
@@ -193,12 +193,10 @@ int main(int argc, char** argv) {
         IREE_CHECK_OK(iree_runtime_call_outputs_pop_front_buffer_view(&call, &raw_output_view));
         IREE_CHECK_OK(iree_runtime_call_outputs_pop_front_buffer_view(&call, &new_hidden_state_h));
         IREE_CHECK_OK(iree_runtime_call_outputs_pop_front_buffer_view(&call, &new_hidden_state_c));
-        
-        float* raw_output_data;
 
-        print_output_tensor(raw_output_view, raw_output_data);
+        std::vector<float> raw_output_data = print_output_tensor(raw_output_view);
 
-        auto final_velocity = calculate_final_velocity(raw_output_data, received_data.desired_velocity, received_data.position_x);
+        auto final_velocity = calculate_final_velocity(raw_output_data.data(), received_data.desired_velocity, received_data.position_x);
         
         auto packed_velocity = pack_reply(final_velocity.data());
 
@@ -270,32 +268,29 @@ inline void swap_endian_4(unsigned char *data) {
   std::swap(data[1], data[2]);
 }
 
-void print_output_tensor(iree_hal_buffer_view_t* view, float* output_data) {
-    if (!view) {
-        std::cout << "  <null>" << std::endl;
-        return;
-    }
+std::vector<float> print_output_tensor(iree_hal_buffer_view_t* view) {
+    if (!view) { std::cout << "  <null>" << std::endl; return; }
     iree_hal_buffer_mapping_t mapped_memory;
-    IREE_CHECK_OK(iree_hal_buffer_map_range(
-        iree_hal_buffer_view_buffer(view), 
-        IREE_HAL_MAPPING_MODE_SCOPED,
-        IREE_HAL_MEMORY_ACCESS_READ, 0, 
-        iree_hal_buffer_view_byte_length(view), 
-        &mapped_memory));
-
-    output_data = reinterpret_cast<const float*>(mapped_memory.contents.data);
+    IREE_CHECK_OK(iree_hal_buffer_map_range(iree_hal_buffer_view_buffer(view), IREE_HAL_MAPPING_MODE_SCOPED, IREE_HAL_MEMORY_ACCESS_READ, 0, IREE_HAL_WHOLE_BUFFER, &mapped_memory));
+    iree_hal_element_type_t element_type = iree_hal_buffer_view_element_type(view);
     iree_host_size_t element_count = iree_hal_buffer_view_element_count(view);
-    std::cout << "  Output Tensor (Shape: ";
-    for (int i = 0; i < iree_hal_buffer_view_shape_rank(view); ++i) {
-        std::cout << iree_hal_buffer_view_shape_dim(view, i) << (i < iree_hal_buffer_view_shape_rank(view) - 1 ? "x" : "");
+
+    std::vector<float> model_output;
+
+    if (element_type == IREE_HAL_ELEMENT_TYPE_FLOAT_16) {
+        const half_float_t* data_ptr = (const half_float_t*)mapped_memory.contents.data;
+        for (iree_host_size_t i = 0; i < element_count; ++i) { model_output.push_back(half_to_float32(data_ptr[i])); }
+    } else if (element_type == IREE_HAL_ELEMENT_TYPE_FLOAT_32) {
+        const float* data_ptr = (const float*)mapped_memory.contents.data;
+        for (iree_host_size_t i = 0; i < element_count; ++i) { model_output.push_back(data_ptr[i]); }
     }
-    std::cout << ", Type: f32):" << std::endl;
-    std::cout << "  [";
-    for (iree_host_size_t i = 0; i < element_count; ++i) {
-        std::cout << output_data[i] << (i < element_count - 1 ? ", " : "");
-    }
+    
+    std::cout << "  Model Output:    [";
+    for(size_t i = 0; i < model_output.size(); ++i) { std::cout << model_output[i] << (i < model_output.size() - 1 ? ", " : ""); }
     std::cout << "]" << std::endl;
+
     iree_hal_buffer_unmap_range(&mapped_memory);
+    return model_output;
 }
 
 ReceivedPacket unpack_frame(const char *packet) {
