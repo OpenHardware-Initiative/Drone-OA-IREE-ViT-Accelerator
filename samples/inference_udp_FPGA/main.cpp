@@ -85,10 +85,8 @@ iree_status_t create_tensor_view(iree_hal_device_t* device, const void* data, co
 std::vector<float> print_output_tensor(iree_hal_buffer_view_t* view);
 bool load_telemetry_for_image(const std::filesystem::path& csv_path, const std::string& image_timestamp_str, TelemetryData& out_telemetry);
 ReceivedPacket unpack_frame(const char *packet);
-std::array<float, 3>calculate_final_velocity(float* raw_output,
-                         float desired_vel, float pos_x);
-std::vector<unsigned char> pack_reply(float* velocity_cmd);
 iree_status_t convert_f16_view_to_f32_view(iree_hal_device_t* device, iree_hal_buffer_view_t* f16_view, iree_hal_buffer_view_t** out_f32_view);
+std::vector<unsigned char> process_and_pack_velocity(iree_hal_buffer_view_t* output_view, float desired_velocity, float position_x);
 
 // --- Main Application ---
 int main(int argc, char** argv) {
@@ -192,11 +190,7 @@ int main(int argc, char** argv) {
         IREE_CHECK_OK(iree_runtime_call_outputs_pop_front_buffer_view(&call, &new_hidden_state_h_f16));
         IREE_CHECK_OK(iree_runtime_call_outputs_pop_front_buffer_view(&call, &new_hidden_state_c_f16));
             
-        std::vector<float> raw_output_data = print_output_tensor(raw_output_view);
-
-        auto final_velocity = calculate_final_velocity(raw_output_data.data(), received_data.desired_velocity, received_data.position_x);
-        
-        auto packed_velocity = pack_reply(final_velocity.data());
+        auto packed_velocity = process_and_pack_velocity(raw_output_view, received_data.desired_velocity, received_data.position_x);
 
         // Send reply back to client
         ssize_t bytes_sent =
@@ -410,6 +404,12 @@ calculate_final_velocity(float* raw_output,
 
   // 5. Return the result by value
   return final_velocity;
+}
+
+std::vector<unsigned char> process_and_pack_velocity(iree_hal_buffer_view_t* output_view, float desired_velocity, float position_x) {
+    std::vector<float> raw_output_data = print_output_tensor(output_view);
+    auto final_velocity = calculate_final_velocity(raw_output_data.data(), desired_velocity, position_x);
+    return pack_reply(final_velocity.data());
 }
 
 iree_status_t convert_f16_view_to_f32_view(iree_hal_device_t* device, iree_hal_buffer_view_t* f16_view, iree_hal_buffer_view_t** out_f32_view) {
