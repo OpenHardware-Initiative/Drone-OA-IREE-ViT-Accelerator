@@ -92,8 +92,8 @@ iree_status_t convert_f16_view_to_f32_view(iree_hal_device_t* device, iree_hal_b
 
 // --- Main Application ---
 int main(int argc, char** argv) {
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " /path/to/model.vmfb /path/to/root_data_folder" << std::endl;
+    if (argc != 2) {
+        std::cerr << "Usage: " << argv[0] << " /path/to/model.vmfb" << std::endl;
         return 1;
     }
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -117,32 +117,20 @@ int main(int argc, char** argv) {
     std::cout << "UDP server listening on port " << PORT << std::endl;
 
     std::filesystem::path vmfb_path(argv[1]);
-    std::filesystem::path root_data_dir(argv[2]);
-
     iree_runtime_instance_options_t instance_options;
     iree_runtime_instance_options_initialize(&instance_options);
+    iree_runtime_instance_options_use_all_available_drivers(&instance_options);
     iree_runtime_instance_t* instance = NULL;
     iree_allocator_t host_allocator = { .self = NULL, .ctl = iree_allocator_libc_ctl };
     IREE_CHECK_OK(iree_runtime_instance_create(&instance_options, host_allocator, &instance));
-    
-    // FINAL FIX #2: Corrected function call with "_module".
-    IREE_CHECK_OK(iree_hal_local_sync_driver_module_register(
-        iree_runtime_instance_driver_registry(instance)));
-
     iree_hal_device_t* device = NULL;
-    IREE_CHECK_OK(iree_runtime_instance_try_create_default_device(
-        instance, iree_make_cstring_view("local-sync"), &device));
-
+    IREE_CHECK_OK(iree_runtime_instance_try_create_default_device(instance, iree_make_cstring_view("local-sync"), &device));
     iree_runtime_session_options_t session_options;
     iree_runtime_session_options_initialize(&session_options);
     iree_runtime_session_t* session = NULL;
-    IREE_CHECK_OK(iree_runtime_session_create_with_device(
-        instance, &session_options, device,
-        iree_runtime_instance_host_allocator(instance), &session));
-
+    IREE_CHECK_OK(iree_runtime_session_create_with_device(instance, &session_options, device, iree_runtime_instance_host_allocator(instance), &session));
     std::cout << "Loading model: " << vmfb_path << std::endl;
     IREE_CHECK_OK(iree_runtime_session_append_bytecode_module_from_file(session, vmfb_path.c_str()));
-
     iree_hal_buffer_view_t* hidden_state_h = NULL;
     iree_hal_buffer_view_t* hidden_state_c = NULL;
     std::vector<char> zero_buffer(3 * 1 * 128 * sizeof(float), 0);
