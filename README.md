@@ -107,8 +107,13 @@ You can either download a SVG visualization extension for VSCode called `Svg Pre
 
 1. Set macros (from repo level):
 ```bash
-export BUILD_HOST_DIR=build-host
-export INSTALL_HOST_DIR=build-host/install
+export WORKSPACE_DIR=${PWD}
+export BUILD_HOST_DIR=${WORKSPACE_DIR}/build-host
+export INSTALL_HOST_DIR=${BUILD_HOST_DIR}/install
+export BUILD_KRIA_DIR=${WORKSPACE_DIR}/build-kria
+export INSTALL_KRIA_DIR=${BUILD_KRIA_DIR}/install
+#print paths
+
 ```
 
 ```bash
@@ -174,3 +179,8 @@ qemu-aarch64-static -L /opt/sysroot/sysroots/aarch64-xilinix-linux \
     /workspace/build-kria/runtime/plugins/ita-samples/inference/ITAViTLSTM_test_data \
     /workspace/output/ITAViTLSTM_f16.vmfb \
     /workspace/training/small_data
+
+
+Build for debug version:
+
+cmake     -G Ninja     -B build-debug     -S third_party/iree       -DIREE_HOST_BIN_DIR=$INSTALL_HOST_DIR/bin     -DIREE_CMAKE_PLUGIN_PATHS=$PWD     -DCMAKE_BUILD_TYPE=Debug     -DIREE_BUILD_COMPILER=OFF     -DIREE_BUILD_SAMPLES=ON     -DIREE_BUILD_TESTS=OFF     -DIREE_BUILD_PYTHON_BINDINGS=OFF     -DIREE_TARGET_BACKEND_DEFAULTS=OFF     -DIREE_TARGET_BACKEND_LLVM_CPU=ON     -DIREE_HAL_DRIVER_DEFAULTS=OFF -DIREE_HAL_DRIVER_LOCAL_SYNC=ON

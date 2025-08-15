@@ -2,3 +2,4 @@
 
 add_subdirectory(inference_trainingset_comparison)
 add_subdirectory(inference_udp_FPGA)
+add_subdirectory(inference_trainingset_custom_dispatch)
