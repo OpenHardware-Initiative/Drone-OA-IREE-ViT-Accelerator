@@ -17,7 +17,7 @@ message(STATUS "Using clang for custom ops: ${CLANG_EXECUTABLE}")
 # This custom command compiles our C code into a freestanding ELF object file.
 add_custom_command(
   OUTPUT
-    ${CMAKE_CURRENT_BINARY_DIR}/custom_unary_ops_${_ARCH}.o
+    ${CMAKE_CURRENT_BINARY_DIR}/dummy_dispatch${_ARCH}.o
   DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/custom_unary_ops.c
     ${CLANG_EXECUTABLE}
@@ -36,18 +36,18 @@ add_custom_command(
     -fdata-sections
     -ffunction-sections
     # --- Input / Output ---
-    -c ${CMAKE_CURRENT_SOURCE_DIR}/custom_unary_ops.c
-    -o ${CMAKE_CURRENT_BINARY_DIR}/custom_unary_ops_${_ARCH}.o
+    -c ${CMAKE_CURRENT_SOURCE_DIR}/dummy_dispatch.c
+    -o ${CMAKE_CURRENT_BINARY_DIR}/dummy_dispatch${_ARCH}.o
   VERBATIM
   COMMENT "Building custom unary op object for ${_ARCH}"
 )
 
 # Create a target that represents the build step for our object file.
-add_custom_target(custom_unary_ops_object_${_ARCH} DEPENDS
-  ${CMAKE_CURRENT_BINARY_DIR}/custom_unary_ops_${_ARCH}.o
+add_custom_target(dummy_dispatchobject_${_ARCH} DEPENDS
+  ${CMAKE_CURRENT_BINARY_DIR}/dummy_dispatch${_ARCH}.o
 )
 
 # This is a convenience target. Building it will ensure all custom objects are created.
 add_custom_target(custom_ops_objects DEPENDS
-    custom_unary_ops_object_${_ARCH}
+    dummy_dispatchobject_${_ARCH}
 )
