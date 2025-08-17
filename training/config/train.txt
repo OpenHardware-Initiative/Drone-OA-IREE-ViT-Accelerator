@@ -1,32 +1,67 @@
-# --- Set epochs and save frequency to 1 ---
-N_eps = 1
-save_model_freq = 1
+# ===================================================================
+# Training Configuration for ITALSTMNetVIT
+# ===================================================================
 
-# --- (Optional but Recommended for Testing) Use a small subset of data to speed it up ---
-short = 10 # Use only 10 trajectory folders from the dataset
+## -------------------------------------------------------------------
+## Core Paths
+## -------------------------------------------------------------------
+# basedir should point to your project's root directory.
+basedir = /Projects/Agus/Drone-OA-IREE-ViT-Accelerator
 
-# Device and paths
-device = cpu # Use 'cpu' if you have a GPU, otherwise 'cpu'
-basedir = /home/coppholl/Projects/Drone-OA-IREE-ViT-Accelerator 
+# Directory for saving logs, checkpoints, and TensorBoard files.
 logdir = training/logs
-datadir = training
 
-# Dataset settings
-dataset = small_data
-short = 0
+# Parent directory where your datasets are stored.
+datadir = /Projects/Agus/Drone-OA-IREE-ViT-Accelerator/training/datasets
+
+
+## -------------------------------------------------------------------
+## Dataset and Model Specification
+## -------------------------------------------------------------------
+# The name of your dataset folder.
+dataset = data
+
+# Select your custom model using the key you added in train.py.
+model_type = ITALSTMNetVIT
+
+# Validation split fraction. 0.2 (20%) is a robust choice.
 val_split = 0.2
 
-# Model and checkpoint
-# model_type is ignored by qat_ita_trainer.py, which always uses ITALSTMNetVIT
-model_type = ITAViTLSTMFloat 
+# Set a seed for reproducible train/validation splits and weight initialization.
+seed = 42
 
-# Training hyperparameters
-lr = 1e-4 # Use a smaller learning rate for fine-tuning
-N_eps = 5 # Fine-tuning usually requires fewer epochs
-lr_warmup_epochs = 5
+# Use all data. Set to a positive integer to load only a few trajectories for debugging.
+short = 0
+
+
+## -------------------------------------------------------------------
+## Training Hyperparameters (Best Practices)
+## -------------------------------------------------------------------
+# Initial learning rate. 1e-4 is a solid starting point for Adam with Transformer-based models.
+lr = 1e-4
+
+# Number of training epochs. Set high and use early stopping based on validation loss.
+N_eps = 500
+
+# Enable learning rate warmup. Crucial for stabilizing Transformer training.
+lr_warmup_epochs = 10
+
+# Enable learning rate decay after warmup. Helps fine-tune convergence.
 lr_decay = True
+
+# Device to train on.
+device = cuda
+
+
+## -------------------------------------------------------------------
+## Checkpointing and Validation
+## -------------------------------------------------------------------
+# Frequency (in epochs) to save model checkpoints.
 save_model_freq = 10
+
+# Frequency (in epochs) to run validation. More frequent validation helps pinpoint the best model.
 val_freq = 5
 
-# Workspace suffix for QAT runs
-ws_suffix = _float_trainig
+# Set to True if you want to resume training from a specific checkpoint.
+load_checkpoint = False
+checkpoint_path = ''

@@ -15,7 +15,7 @@ sys.path.insert(0, project_root)
 
 
 # Assume ita_layers_qat.py is in the same directory or accessible
-from models.ITA.QAT.layers import ITASelfAttention_QAT, ITAFeedForward_QAT, OverlapPatchMerging
+from models.ITA.layers import ITASelfAttention, ITAFeedForward, OverlapPatchMerging
 
 def refine_inputs(X):
     # (Same as your original function)
@@ -28,7 +28,7 @@ def refine_inputs(X):
         X[0] = F.interpolate(X[0], size=(60, 90), mode='bilinear', align_corners=False)
     return X
 
-class ITALSTMNetVIT_QAT(nn.Module):
+class ITALSTMNetVIT(nn.Module):
     """
     Model architecture for mixed-precision QAT.
     Attention and FFN blocks are quantized, the rest remains float.
@@ -46,11 +46,11 @@ class ITALSTMNetVIT_QAT(nn.Module):
 
         # --- 2. ITA Accelerated Part (To be Quantized) ---
         self.attention_blocks = nn.ModuleList([
-            ITASelfAttention_QAT(embed_dim=self.E, proj_dim=self.P, num_heads=self.H)
+            ITASelfAttention(embed_dim=self.E, proj_dim=self.P, num_heads=self.H)
             for _ in range(2)
         ])
         self.ffn_blocks = nn.ModuleList([
-            ITAFeedForward_QAT(embed_dim=self.E, ffn_dim=self.F)
+            ITAFeedForward(embed_dim=self.E, ffn_dim=self.F)
             for _ in range(2)
         ])
         
@@ -62,12 +62,9 @@ class ITALSTMNetVIT_QAT(nn.Module):
         self.decoder = nn.Linear(self.E * self.S, 512)
         self.lstm = nn.LSTM(input_size=517, hidden_size=128, num_layers=3, dropout=0.1)
         self.nn_fc2 = nn.Linear(128, 3)
+
         
-        # Functional wrappers for operations between float and quant regions
-        self.add = nnq.FloatFunctional()
-        self.cat = nnq.FloatFunctional()
-        
-        # --- Feature FusAion Layers (Float) from LSTMNetVIT ---
+        # --- Feature Fusion Layers (Float) from LSTMNetVIT ---
         # NOTE: The target model's fusion depends on multi-stage inputs of different resolutions.
         # We will adapt this by using intermediate outputs from our single encoder stream.
         self.up_sample = nn.Upsample(size=(32, 48), mode='bilinear', align_corners=True)
@@ -82,7 +79,7 @@ class ITALSTMNetVIT_QAT(nn.Module):
         self.adaptive_pool = nn.AdaptiveAvgPool2d((8, 12)) # Output size -> 48 * 8 * 12 = 4608
 
         # --- 3. CPU Post-processing (Float) ---
-        self.decoder = spectral_norm(nn.Linear(self.E * self.S, 512)) # E*S = 16384
+        self.decoder = spectral_norm(nn.Linear(self.E * self.S, 512))
         self.lstm = nn.LSTM(input_size=517, hidden_size=128, num_layers=3, dropout=0.1)
         self.nn_fc2 = spectral_norm(nn.Linear(128, 3))
         
@@ -97,17 +94,17 @@ class ITALSTMNetVIT_QAT(nn.Module):
             # The input 'x' is float. QAT will insert quantize ops automatically.
             attn_out = self.attention_blocks[i](x)
             # The output 'attn_out' is dequantized back to float by QAT.
-            x = self.add.add(x, attn_out) # Residual connection
+            x = x + attn_out # Residual connection
             x = self.norm1_layers[i](x)
 
             # FFN sub-block
             ffn_out = self.ffn_blocks[i](x)
-            x = self.add.add(x, ffn_out) # Residual connection
+            x = x + ffn_out # Residual connection
             x = self.norm2_layers[i](x)
         
         x = x.flatten(1)
         out = self.decoder(x)
-        out_cat = self.cat.cat([out, additional_data / 10.0, quat_data], dim=1).unsqueeze(0)
+        out_cat = torch.cat([out, additional_data / 10.0, quat_data], dim=1).unsqueeze(0)
         
         hidden_state = X[3] if len(X) > 3 else None
         out_lstm, h = self.lstm(out_cat, hidden_state)
