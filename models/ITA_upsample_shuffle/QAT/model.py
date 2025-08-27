@@ -67,7 +67,7 @@ class ITALSTMNetVIT_QAT(nn.Module):
         self.add = nnq.FloatFunctional()
         self.cat = nnq.FloatFunctional()
         
-        # --- Feature Fusion Layers (Float) from LSTMNetVIT ---
+        # --- Feature FusAion Layers (Float) from LSTMNetVIT ---
         # NOTE: The target model's fusion depends on multi-stage inputs of different resolutions.
         # We will adapt this by using intermediate outputs from our single encoder stream.
         self.up_sample = nn.Upsample(size=(32, 48), mode='bilinear', align_corners=True)
@@ -82,7 +82,7 @@ class ITALSTMNetVIT_QAT(nn.Module):
         self.adaptive_pool = nn.AdaptiveAvgPool2d((8, 12)) # Output size -> 48 * 8 * 12 = 4608
 
         # --- 3. CPU Post-processing (Float) ---
-        self.decoder = spectral_norm(nn.Linear(4608, 512))
+        self.decoder = spectral_norm(nn.Linear(self.E * self.S, 512)) # E*S = 16384
         self.lstm = nn.LSTM(input_size=517, hidden_size=128, num_layers=3, dropout=0.1)
         self.nn_fc2 = spectral_norm(nn.Linear(128, 3))
         

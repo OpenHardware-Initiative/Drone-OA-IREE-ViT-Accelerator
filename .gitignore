@@ -195,6 +195,7 @@ build-kria/
 install-host/
 install-kria/
 build-*
+iree_env
 
 # Docker
 .docker/kria-sysroot.tar.xz

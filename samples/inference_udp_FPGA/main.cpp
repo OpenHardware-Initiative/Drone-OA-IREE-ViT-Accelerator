@@ -83,10 +83,8 @@ iree_status_t create_tensor_view(iree_hal_device_t* device, const void* data, co
 std::vector<float> print_output_tensor(iree_hal_buffer_view_t* view);
 bool load_telemetry_for_image(const std::filesystem::path& csv_path, const std::string& image_timestamp_str, TelemetryData& out_telemetry);
 ReceivedPacket unpack_frame(const char *packet);
-std::array<float, 3>calculate_final_velocity(float* raw_output,
-                         float desired_vel, float pos_x);
-std::vector<unsigned char> pack_reply(float* velocity_cmd);
 iree_status_t convert_f16_view_to_f32_view(iree_hal_device_t* device, iree_hal_buffer_view_t* f16_view, iree_hal_buffer_view_t** out_f32_view);
+std::vector<unsigned char> process_and_pack_velocity(iree_hal_buffer_view_t* output_view, float desired_velocity, float position_x);
 
 // --- Main Application ---
 int main(int argc, char** argv) {
@@ -129,13 +127,14 @@ int main(int argc, char** argv) {
     IREE_CHECK_OK(iree_runtime_session_create_with_device(instance, &session_options, device, iree_runtime_instance_host_allocator(instance), &session));
     std::cout << "Loading model: " << vmfb_path << std::endl;
     IREE_CHECK_OK(iree_runtime_session_append_bytecode_module_from_file(session, vmfb_path.c_str()));
+    
+    const iree_hal_dim_t hidden_shape[] = {3, 1, 128};
+    std::vector<char> zero_buffer(3 * 1 * 128 * sizeof(float), 0);
     iree_hal_buffer_view_t* hidden_state_h = NULL;
     iree_hal_buffer_view_t* hidden_state_c = NULL;
-    std::vector<char> zero_buffer(3 * 1 * 128 * sizeof(float), 0);
-    const iree_hal_dim_t hidden_shape[] = {3, 1, 128};
     IREE_CHECK_OK(create_tensor_view(device, zero_buffer.data(), hidden_shape, 3, IREE_HAL_ELEMENT_TYPE_FLOAT_32, &hidden_state_h));
     IREE_CHECK_OK(create_tensor_view(device, zero_buffer.data(), hidden_shape, 3, IREE_HAL_ELEMENT_TYPE_FLOAT_32, &hidden_state_c));
-
+        
     while (true) {
         // Buffer for incoming packet
         char packet[8192];
@@ -164,9 +163,13 @@ int main(int argc, char** argv) {
         const iree_hal_dim_t img_shape[] = {1, 1, 60, 90};
         iree_hal_buffer_view_t* img_view = NULL;
         IREE_CHECK_OK(create_tensor_view(device, image_f32.data(), img_shape, 4, IREE_HAL_ELEMENT_TYPE_FLOAT_32, &img_view));
+        
+        float scaled_velocity = received_data.desired_velocity / 10.0f;
+
         const iree_hal_dim_t vel_shape[] = {1, 1};
         iree_hal_buffer_view_t* vel_view = NULL;
-        IREE_CHECK_OK(create_tensor_view(device, &received_data.desired_velocity, vel_shape, 2, IREE_HAL_ELEMENT_TYPE_FLOAT_32, &vel_view));
+        IREE_CHECK_OK(create_tensor_view(device, &scaled_velocity, vel_shape, 2, IREE_HAL_ELEMENT_TYPE_FLOAT_32, &vel_view));
+        
         const iree_hal_dim_t quat_shape[] = {1, 4};
         iree_hal_buffer_view_t* quat_view = NULL;
         IREE_CHECK_OK(create_tensor_view(device, received_data.quaternion.data(), quat_shape, 2, IREE_HAL_ELEMENT_TYPE_FLOAT_32, &quat_view));
@@ -179,17 +182,13 @@ int main(int argc, char** argv) {
 
         IREE_CHECK_OK(iree_runtime_call_invoke(&call, 0));
         iree_hal_buffer_view_t* raw_output_view = NULL;
-        iree_hal_buffer_view_t* new_hidden_state_h = NULL;
-        iree_hal_buffer_view_t* new_hidden_state_c = NULL;
+        iree_hal_buffer_view_t* new_hidden_state_h_f16 = NULL;
+        iree_hal_buffer_view_t* new_hidden_state_c_f16 = NULL;
         IREE_CHECK_OK(iree_runtime_call_outputs_pop_front_buffer_view(&call, &raw_output_view));
-        IREE_CHECK_OK(iree_runtime_call_outputs_pop_front_buffer_view(&call, &new_hidden_state_h));
-        IREE_CHECK_OK(iree_runtime_call_outputs_pop_front_buffer_view(&call, &new_hidden_state_c));
-
-        std::vector<float> raw_output_data = print_output_tensor(raw_output_view);
-
-        auto final_velocity = calculate_final_velocity(raw_output_data.data(), received_data.desired_velocity, received_data.position_x);
-        
-        auto packed_velocity = pack_reply(final_velocity.data());
+        IREE_CHECK_OK(iree_runtime_call_outputs_pop_front_buffer_view(&call, &new_hidden_state_h_f16));
+        IREE_CHECK_OK(iree_runtime_call_outputs_pop_front_buffer_view(&call, &new_hidden_state_c_f16));
+            
+        auto packed_velocity = process_and_pack_velocity(raw_output_view, received_data.desired_velocity, received_data.position_x);
 
         // Send reply back to client
         ssize_t bytes_sent =
@@ -205,8 +204,12 @@ int main(int argc, char** argv) {
         
         iree_hal_buffer_view_release(hidden_state_h);
         iree_hal_buffer_view_release(hidden_state_c);
-        hidden_state_h = new_hidden_state_h;
-        hidden_state_c = new_hidden_state_c;
+
+        IREE_CHECK_OK(convert_f16_view_to_f32_view(device, new_hidden_state_h_f16, &hidden_state_h));
+        IREE_CHECK_OK(convert_f16_view_to_f32_view(device, new_hidden_state_c_f16, &hidden_state_c));
+
+        iree_hal_buffer_view_release(new_hidden_state_h_f16);
+        iree_hal_buffer_view_release(new_hidden_state_c_f16);
 
         iree_hal_buffer_view_release(img_view);
         iree_hal_buffer_view_release(vel_view);
@@ -214,9 +217,6 @@ int main(int argc, char** argv) {
         iree_hal_buffer_view_release(raw_output_view);
         iree_runtime_call_deinitialize(&call);
     }
-        
-    iree_hal_buffer_view_release(hidden_state_h);
-    iree_hal_buffer_view_release(hidden_state_c);
 
     iree_runtime_session_release(session);
     iree_hal_device_release(device);
@@ -402,6 +402,12 @@ calculate_final_velocity(float* raw_output,
 
   // 5. Return the result by value
   return final_velocity;
+}
+
+std::vector<unsigned char> process_and_pack_velocity(iree_hal_buffer_view_t* output_view, float desired_velocity, float position_x) {
+    std::vector<float> raw_output_data = print_output_tensor(output_view);
+    auto final_velocity = calculate_final_velocity(raw_output_data.data(), desired_velocity, position_x);
+    return pack_reply(final_velocity.data());
 }
 
 iree_status_t convert_f16_view_to_f32_view(iree_hal_device_t* device, iree_hal_buffer_view_t* f16_view, iree_hal_buffer_view_t** out_f32_view) {

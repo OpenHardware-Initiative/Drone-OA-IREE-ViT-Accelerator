@@ -1,38 +1,27 @@
-# QAT configuration for a short test run (1 epoch)
-
-# --- Set epochs and save frequency to 1 ---
-N_eps = 1
-save_model_freq = 1
-
-# --- (Optional but Recommended for Testing) Use a small subset of data to speed it up ---
-short = 10 # Use only 10 trajectory folders from the dataset
+# QAT configuration for fine-tuning
 
 # Device and paths
-device = cpu # Use 'cpu' if you have a GPU, otherwise 'cpu'
-basedir = /home/coppholl/Projects/Drone-OA-IREE-ViT-Accelerator 
+device = cuda # QAT fine-tuning should be done on a GPU for speed
+basedir = /Projects/Agus/Drone-OA-IREE-ViT-Accelerator
 logdir = training/logs
-datadir = training
+datadir = training/datasets # Corrected path to parent folder
 
 # Dataset settings
-dataset = small_data
-short = 0
+dataset = data # Assuming you want to fine-tune on the full dataset
 val_split = 0.2
+short = 0 # Use 0 to train on all data
 
-# Model and checkpoint
-# model_type is ignored by qat_ita_trainer.py, which always uses ITALSTMNetVIT
-model_type = ViTLSTM 
+# --- CORRECTED: Load the pre-trained float model ---
+load_checkpoint_qat = True
+checkpoint_path = /Projects/Agus/Drone-OA-IREE-ViT-Accelerator/training/logs/upscale_shuffle_v0.1/model_000125.pth
 
-# --- BEST PRACTICE: Start QAT from a pre-trained float model ---
-load_checkpoint_qat = False
-checkpoint_path = /path/to/your/best_float_model.pth # UPDATE THIS
-
-# Training hyperparameters
-lr = 1e-4 # Use a smaller learning rate for fine-tuning
-N_eps = 5 # Fine-tuning usually requires fewer epochs
-lr_warmup_epochs = 5
+# Training hyperparameters for fine-tuning
+lr = 1e-5 # BEST PRACTICE: Use a smaller learning rate (e.g., 1/10th) for fine-tuning
+N_eps = 20 # Fine-tuning usually requires fewer epochs, 10-20 is a good start
+lr_warmup_epochs = 2
 lr_decay = True
-save_model_freq = 10
-val_freq = 5
+save_model_freq = 5
+val_freq = 1
 
 # Workspace suffix for QAT runs
-ws_suffix = _qat_replace_model
+ws_suffix = _qat_run_1
