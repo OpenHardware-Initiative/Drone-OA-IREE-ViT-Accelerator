@@ -28,8 +28,6 @@
 #include "iree/hal/api.h"
 #include "iree/runtime/api.h"
 
-// --- Image Loading Library ---
-#include "include/stb_image.h"
 
 // Network Configuration
 const int PORT = 10001;

@@ -6,10 +6,6 @@ project(ITAViTLSTM_Inference CXX C)
 # It is expected to define the CUSTOM_OP_OBJECT_FILE variable.
 add_subdirectory(plugin)
 
-# This adds our shared, header-only utility libraries (like stb_image).
-# It is expected to define the 'project_utils' INTERFACE target.
-# The path is relative; adjust if your 'utils' folder is elsewhere.
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../utils utils)
 
 # --- 2. Define and Automate Model Compilation ---
 if(NOT DEFINED IREE_HOST_BIN_DIR)
