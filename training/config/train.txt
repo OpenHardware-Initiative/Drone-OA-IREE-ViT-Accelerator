@@ -22,7 +22,7 @@ datadir = /Projects/Agus/Drone-OA-IREE-ViT-Accelerator/training/datasets
 dataset = data
 
 # Select your custom model using the key you added in train.py.
-model_type = ITALSTMNetVIT
+model_type = ITALSTMNetVIT_single_layer
 
 # Validation split fraction. 0.2 (20%) is a robust choice.
 val_split = 0.2
