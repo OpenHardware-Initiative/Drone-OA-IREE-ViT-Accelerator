@@ -116,7 +116,7 @@ do
   PY_PID="$!"
 
   # Run the competition host script using its full, absolute path
-  python3 "$MONOREPO_ROOT/Host/run_competition_FPGA+HOST.py" $run_competition_args --des_vel 5.0 &
+  python3 "$MONOREPO_ROOT/third_party/kria_inference/PyHost/run_competition_FPGA+HOST.py" $run_competition_args --des_vel 5.0 &
   COMP_PID="$!"
 
   cd -
