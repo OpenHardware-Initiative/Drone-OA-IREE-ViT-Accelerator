@@ -38,6 +38,9 @@ else
   exit 1
 fi
 
+if [ -z "$3" ]; then echo "ERROR: A third argument for desired velocity is required (e.g., 7.5)"; exit 1; fi
+DESIRED_VEL="$3"
+
 # Set Flightmare Path if it is not set
 if [ -z $FLIGHTMARE_PATH ]
 then
@@ -116,7 +119,7 @@ do
   PY_PID="$!"
 
   # Run the competition host script using its full, absolute path
-  python3 "$MONOREPO_ROOT/Host/run_competition_FPGA+HOST.py" $run_competition_args --des_vel 5.0 &
+  python3 "$MONOREPO_ROOT/third_party/kria_inference/PyHost/run_competition_FPGA+HOST.py" $run_competition_args --des_vel $DESIRED_VEL &
   COMP_PID="$!"
 
   cd -
