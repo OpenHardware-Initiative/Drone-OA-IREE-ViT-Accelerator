@@ -232,6 +232,11 @@ If you have a compatible NVIDIA GPU, replace the last 5 flags above with:
 
 To build a C++ application with full debug symbols, configure a separate build with `CMAKE_BUILD_TYPE=Debug`. This uses the pre-built host tools to avoid rebuilding the entire compiler.
 
+Be sure to run before:
+```bash
+export INSTALL_HOST_DIR=absolute/path/to/build-host/install
+```
+
 ```bash
 # Configure debug build
 cmake \
