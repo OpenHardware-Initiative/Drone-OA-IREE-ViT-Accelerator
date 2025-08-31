@@ -32,13 +32,12 @@ def refine_inputs(X):
 
 class ITALSTMNetVIT_QAT(nn.Module):
     """
-    QAT-enabled version of the model.
-    Attention and FFN blocks are quantized, separated by float LayerNorms.
+    QAT-enabled model with a VARIABLE number of transformer layers.
     """
-    def __init__(self):
+    def __init__(self, num_layers: int = 1): # Add num_layers argument
         super().__init__()
         
-        # CORRECTED: E must be 64 to match the pre-trained float model.
+        self.num_layers = num_layers
         self.E, self.S, self.P, self.F, self.H = 64, 128, 192, 256, 1
         
         # --- 1. Float Pre-processing ---
@@ -47,60 +46,71 @@ class ITALSTMNetVIT_QAT(nn.Module):
             stride=2, padding=3, output_size=(8, 16)
         )
 
-        # --- 2. Quantized Blocks ---
-        # Stubs to define quantization boundaries for the attention block
-        self.quant1 = QuantStub()
-        self.attention_blocks = ITASelfAttention_QAT(embed_dim=self.E, proj_dim=self.P, num_heads=self.H)
-        self.dequant1 = DeQuantStub()
+        # --- 2. Transformer Blocks (now in ModuleLists) ---
+        # Create ModuleList containers to hold all the layers
+        self.attention_blocks = nn.ModuleList()
+        self.ffn_blocks = nn.ModuleList()
+        self.norms1 = nn.ModuleList()
+        self.norms2 = nn.ModuleList()
         
-        # Stubs to define quantization boundaries for the FFN block
-        self.quant2 = QuantStub()
-        self.ffn_blocks = ITAFeedForward_QAT(embed_dim=self.E, ffn_dim=self.F)
-        self.dequant2 = DeQuantStub()
-
-        # Functional wrapper for operations in the quantized domain (e.g., residual add)
+        # QAT specific modules
+        self.quants1 = nn.ModuleList()
+        self.dequants1 = nn.ModuleList()
+        self.quants2 = nn.ModuleList()
+        self.dequants2 = nn.ModuleList()
         self.add = nnq.FloatFunctional()
 
-        # --- Float Layers ---
-        self.norm1 = nn.LayerNorm(self.E)
-        self.norm2 = nn.LayerNorm(self.E)
-        
-        # --- 3. Float Post-processing ---
-        # Feature Fusion Layers
-        self.pxShuffle = nn.PixelShuffle(upscale_factor=2)
-        self.up_sample = nn.Upsample(size=(16, 32), mode='bilinear', align_corners=True)
-        self.down_sample = nn.Conv2d(in_channels=80, out_channels=9, kernel_size=3, padding=1)
+        # Populate the lists with the desired number of layers
+        for _ in range(num_layers):
+            self.attention_blocks.append(
+                ITASelfAttention_QAT(embed_dim=self.E, proj_dim=self.P, num_heads=self.H)
+            )
+            self.ffn_blocks.append(
+                ITAFeedForward_QAT(embed_dim=self.E, ffn_dim=self.F)
+            )
+            self.norms1.append(nn.LayerNorm(self.E))
+            self.norms2.append(nn.LayerNorm(self.E))
+            
+            # Add a pair of stubs for each layer to handle float LayerNorms
+            self.quants1.append(QuantStub())
+            self.dequants1.append(DeQuantStub())
+            self.quants2.append(QuantStub())
+            self.dequants2.append(DeQuantStub())
 
-        # Decoder and LSTM
-        # CORRECTED: Input size should be 4608 and spectral_norm is removed.
+        # --- 3. Float Post-processing (No changes here) ---
+        self.pxShuffle = nn.PixelShuffle(upscale_factor=2)
+        # ... rest of the fusion, decoder, and LSTM layers ...
         self.decoder = nn.Linear(4608, 512)
         self.lstm = nn.LSTM(input_size=517, hidden_size=128, num_layers=3, dropout=0.1)
         self.nn_fc2 = nn.Linear(128, 3)
         
+        # Branch B: Upsample to match Branch A's spatial dimensions
+        self.up_sample = nn.Upsample(size=(16, 32), mode='bilinear', align_corners=True)
+        # Downsample conv to reduce concatenated channels
+        self.down_sample = nn.Conv2d(in_channels=(self.E // 4) + self.E, out_channels=9, kernel_size=3, padding=1)
+
+
     def forward(self, X):
         X = refine_inputs(X)
         img_data, additional_data, quat_data = X[0], X[1], X[2]
 
-        # --- 1. Tokenization (Float) ---
         x, H, W = self.tokenizer(img_data)
         
-        # --- 2. Transformer Encoder Block (Mixed Precision) ---
-        
-        # Attention sub-block (Quantized)
-        x_quant = self.quant1(x)
-        attn_out_quant = self.attention_blocks(x_quant)
-        x_quant_res = self.add.add(x_quant, attn_out_quant) # Residual connection in quantized domain
-        x = self.dequant1(x_quant_res)
-        
-        x = self.norm1(x) # LayerNorm in float domain
+        # --- Loop through the transformer layers ---
+        for i in range(self.num_layers):
+            # Attention sub-block
+            x_quant = self.quants1[i](x)
+            attn_out_quant = self.attention_blocks[i](x_quant)
+            x_quant_res = self.add.add(x_quant, attn_out_quant)
+            x = self.dequants1[i](x_quant_res)
+            x = self.norms1[i](x)
 
-        # FFN sub-block (Quantized)
-        x_quant = self.quant2(x)
-        ffn_out_quant = self.ffn_blocks(x_quant)
-        x_quant_res = self.add.add(x_quant, ffn_out_quant) # Residual connection in quantized domain
-        x = self.dequant2(x_quant_res)
-        
-        x = self.norm2(x) # LayerNorm in float domain
+            # FFN sub-block
+            x_quant = self.quants2[i](x)
+            ffn_out_quant = self.ffn_blocks[i](x_quant)
+            x_quant_res = self.add.add(x_quant, ffn_out_quant)
+            x = self.dequants2[i](x_quant_res)
+            x = self.norms2[i](x)
         
         # --- 3. Feature Fusion (Float) ---
         B, S, E = x.shape

@@ -1,107 +1,139 @@
-# export_onnx.py
+# export_to_onnx.py
 
 import torch
-import os, sys
+import torch.nn as nn
+import numpy as np
+import onnx
+import onnxruntime
+import sys
+import argparse # For command-line arguments
 
-# Adjust these imports based on your project structure.
-# This assumes the script is in the 'training' folder.
+# --- 1. Import the Model Definition ---
+try:
+    from models.ITA_single_layer_upsample_shuffle.model import ITALSTMNetVIT
+except ImportError:
+    print("Error: Could not import ITALSTMNetVIT.")
+    print("Please make sure 'model.py' is in the same directory or in the Python path.")
+    sys.exit(1)
 
-# --- Ensure correct paths for imports ---
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, PROJECT_ROOT)
+# --- 2. Create a Wrapper for ONNX Export ---
+# This wrapper remains the same.
+class ITALSTMNetVIT_ONNXWrapper(nn.Module):
+    def __init__(self, model: ITALSTMNetVIT):
+        super().__init__()
+        self.model = model
 
-from models.ITA.QAT.model import ITALSTMNetVIT_QAT
-from models.ITA.export.ITA_ONNX import ITAForONNXExport
+    def forward(self, img_data, additional_data, quat_data, h_in, c_in):
+        hidden_state_in = (h_in, c_in)
+        X = [img_data, additional_data, quat_data, hidden_state_in]
+        out_final, hidden_state_out = self.model(X)
+        h_out, c_out = hidden_state_out
+        return out_final, h_out, c_out
 
-#OUTPUT_BASE_LOCATION = os.path.join(PROJECT_ROOT, "output", "ITA_FPGA", "simvectors")
-
-QUANTIZED_ONNX_PATH = f"{PROJECT_ROOT}/output/ita_model_for_hardware.onnx"
-MLIR_PATH = f"{PROJECT_ROOT}/output/ita_model_for_hardware.mlir"
-
+# --- 3. Main Export and Verification Logic ---
 def main():
-    """
-    Loads the trained QAT model, transfers weights to the export model,
-    and exports the result to an ONNX file.
-    """
-    print("--- Starting ONNX Export Process ---")
-
-    # --- Step 1: Load the trained and quantized model state ---
-    
-    # Path to the saved model from your QAT run
-    trained_model_path = f"{PROJECT_ROOT}/training/logs/d08_11_t16_00_qat_replace_model/model_quantized_final.pth"
-    print(f"Loading trained quantized model from: {trained_model_path}")
-    if not os.path.exists(trained_model_path):
-        print(f"Error: Trained model not found at {trained_model_path}")
-        return
-
-    print(f"Loading trained quantized state_dict from: {trained_model_path}")
-    
-    # Instantiate a fresh QAT model on the CPU in eval mode
-    # This model will act as the source for our float weights.
-    trained_model = ITALSTMNetVIT_QAT()
-    trained_model.eval()
-    
-    # Load the state dict from the .pth file
-    trained_model.load_state_dict(torch.load(trained_model_path), strict=False)
-    
-    print("Successfully loaded trained model.")
-
-    # --- Step 2: Instantiate the export model and transfer weights ---
-    
-    print("Instantiating the ONNX export model (ITAForONNXExport)...")
-    model_for_export = ITAForONNXExport()
-    model_for_export.eval()
-    
-    print("Transferring float weights from trained model to export model...")
-    model_for_export.load_float_weights_from_trained_model(trained_model)
-    
-    # --- Step 3: Create a dummy input for tracing ---
-    
-    print("Creating dummy input for ONNX tracing...")
-    # These shapes should match the expected input dimensions of your model
-    batch_size = 1
-    img_data = torch.randn(batch_size, 1, 60, 90, requires_grad=False)
-    additional_data = torch.randn(batch_size, 1, requires_grad=False)
-    quat_data = torch.randn(batch_size, 4, requires_grad=False)
-    
-    # LSTM hidden state: (num_layers, batch_size, hidden_size)
-    hidden_state = (
-        torch.randn(3, batch_size, 128, requires_grad=False),
-        torch.randn(3, batch_size, 128, requires_grad=False)
+    # --- Argument Parsing ---
+    parser = argparse.ArgumentParser(
+        description="Load a PyTorch model from a .pth file and export it to ONNX."
     )
+    parser.add_argument(
+        "--input-weights",
+        type=str,
+        required=True,
+        help="The path to the input .pth model weights file."
+    )
+    parser.add_argument(
+        "--output-path",
+        type=str,
+        required=True,
+        help="The file path where the ONNX model will be saved."
+    )
+    args = parser.parse_args()
     
-    dummy_input = [img_data, additional_data, quat_data, hidden_state]
+    # --- Configuration ---
+    NUM_LAYERS = 1
+    BATCH_SIZE = 1 
+    LSTM_LAYERS = 3
+    LSTM_HIDDEN = 128
+    
+    # --- Model Preparation ---
+    print("Step 1: Preparing the PyTorch model...")
+    # First, instantiate the model with the correct architecture
+    base_model = ITALSTMNetVIT(num_layers=NUM_LAYERS)
+    
+    # Second, load the trained weights from the specified .pth file
+    print(f"--> Loading weights from: '{args.input_weights}'")
+    # Load onto CPU for maximum compatibility during export
+    device = torch.device('cpu')
+    try:
+        # Load the state dictionary from the file
+        state_dict = torch.load(args.input_weights, map_location=device)
+        # Apply the loaded weights to the model instance
+        base_model.load_state_dict(state_dict)
+        print("--> Weights loaded successfully. ✅")
+    except Exception as e:
+        print(f"🚨 Error loading weights file: {e}")
+        sys.exit(1)
 
-    # --- Step 4: Export to ONNX ---
-    
-    print(f"Exporting model to {QUANTIZED_ONNX_PATH}...")
+    # Third, wrap the model for ONNX and set to evaluation mode
+    model_for_export = ITALSTMNetVIT_ONNXWrapper(base_model)
+    model_for_export.eval()
+    print("✅ Model prepared for export.")
+
+    # --- Create Dummy Inputs ---
+    print(f"\nStep 2: Creating dummy inputs for tracing...")
+    dummy_img = torch.randn(BATCH_SIZE, 1, 60, 90)
+    dummy_add_data = torch.randn(BATCH_SIZE, 1)
+    dummy_quat = torch.randn(BATCH_SIZE, 4)
+    dummy_h_in = torch.randn(LSTM_LAYERS, BATCH_SIZE, LSTM_HIDDEN)
+    dummy_c_in = torch.randn(LSTM_LAYERS, BATCH_SIZE, LSTM_HIDDEN)
+    dummy_inputs = (dummy_img, dummy_add_data, dummy_quat, dummy_h_in, dummy_c_in)
+    print("✅ Dummy inputs created.")
+
+    # --- Export to ONNX ---
+    print(f"\nStep 3: Exporting model to ONNX at '{args.output_path}'...")
+    input_names = ["image_input", "additional_input", "quat_input", "h_in", "c_in"]
+    output_names = ["final_output", "h_out", "c_out"]
     
     torch.onnx.export(
         model_for_export,
-        (dummy_input,),
-        QUANTIZED_ONNX_PATH,
-        export_params=True,
-        opset_version=17,  # A reasonably modern opset version
-        do_constant_folding=True,
-        input_names=['image', 'additional_data', 'quat_data', 'hidden_in_h', 'hidden_in_c'],
-        output_names=['output', 'hidden_out_h', 'hidden_out_c'],
-        #dynamo=True
+        dummy_inputs,
+        args.output_path,
+        verbose=False,
+        input_names=input_names,
+        output_names=output_names,
+        opset_version=17
     )
-    
-    print("--- ONNX Export Complete! --- ✅")
-    print(f"Model saved to: {os.path.abspath(QUANTIZED_ONNX_PATH)}")
-    
-    print("\n✅ Step 4: Exporting to MLIR...")
-    print("To convert the quantized ONNX model to MLIR, run the following command in your terminal:")
-    print("-" * 70)
-    # Use IREE's (Intermediate Representation and Execution Environment) tool
-    # You may need to add flags to target your specific hardware accelerator,
-    # for example: --iree-hal-target-backends=...
-    mlir_command = f"iree-import-onnx {QUANTIZED_ONNX_PATH} --opset-version 17 -o {MLIR_PATH} "
-    print(f"👉 \033[1m{mlir_command}\033[0m")
-    print("-" * 70)
-    print("\nPTQ process with ONNX and MLIR export instructions are complete! 🎉")
+    print(f"✅ Model successfully exported.")
 
+    # --- Verification ---
+    print("\nStep 4: Verifying the exported ONNX model...")
+    onnx_model = onnx.load(args.output_path)
+    onnx.checker.check_model(onnx_model)
+    print("🔍 ONNX checker passed.")
+
+    ort_session = onnxruntime.InferenceSession(args.output_path)
+    ort_inputs = {name: tensor.numpy() for name, tensor in zip(input_names, dummy_inputs)}
+    
+    pytorch_outputs = model_for_export(*dummy_inputs)
+    ort_outputs = ort_session.run(None, ort_inputs)
+    
+    for i, name in enumerate(output_names):
+        pytorch_res = pytorch_outputs[i].detach().numpy()
+        ort_res = ort_outputs[i]
+        
+        # Calculate and print the maximum absolute difference
+        max_diff = np.max(np.abs(pytorch_res - ort_res))
+        
+        if np.allclose(pytorch_res, ort_res, atol=1e-5):
+            print(f"  - Output '{name}' matches. 👍")
+        else:
+            # Print the detailed mismatch information
+            print(f"  - 🚨 Output '{name}' MISMATCH! 🚨")
+            print(f"    Max absolute difference: {max_diff}")
+
+
+    print("\n✅ Verification complete.")
 
 if __name__ == "__main__":
     main()

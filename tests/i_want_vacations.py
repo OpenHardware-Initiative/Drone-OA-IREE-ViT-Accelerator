@@ -14,7 +14,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
 # --- Your Custom Imports ---
-from models.ITA.QAT.model import ITALSTMNetVIT_QAT
+from models.ITA_single_layer_upsample_shuffle.QAT.model import ITALSTMNetVIT_QAT
 #from models.ITA_layers_ReLU_QAT import HardwareReLU
 from third_party.ITA_FPGA.PyITA.ITA import Transformer # Your accelerator simulator
 
@@ -152,40 +152,74 @@ def custom_quantized_matmul(q_a: torch.Tensor,
 
 def organize_params_by_block(flat_params):
     organized = defaultdict(lambda: defaultdict(dict))
-    pattern = re.compile(r"(?P<type>attention_blocks|ffn_blocks)\.(?P<index>\d+)\.(?P<layer>[\w_]+)")
-
-    for name, params in flat_params.items():
-        match = pattern.match(name)
-        if match:
-            d = match.groupdict()
-            block_type = 'attention' if 'attention' in d['type'] else 'ffn'
-            layer_key = d['layer']
-            
-            # <-- CHANGE: Add special handling for the fused Linear+ReLU layer in the FFN.
-            if block_type == 'ffn':
+    
+    # Check if this is a single-layer model (no index in module names)
+    is_single_layer = not any('attention_blocks.0' in name or 'ffn_blocks.0' in name 
+                              for name in flat_params.keys())
+    
+    if is_single_layer:
+        # For single layer, assign everything to block index 0
+        for name, params in flat_params.items():
+            if 'attention_blocks' in name:
+                layer_key = name.replace('attention_blocks.', '')
+                
+                # Handle special cases
+                if layer_key == 'out_proj':
+                    organized['attention'][0]['av_matmul'] = {
+                        'type': 'MatMul_AV',
+                        'input': None,
+                        'output': params['input'][0]
+                    }
+                elif layer_key == 'custom_softmax':
+                    layer_key = 'softmax'
+                    organized['attention'][0]['qk_matmul'] = {
+                        'type': 'MatMul_QK', 
+                        'input': None, 
+                        'output': params['input'][0]
+                    }
+                
+                organized['attention'][0][layer_key] = params
+                
+            elif 'ffn_blocks' in name:
+                layer_key = name.replace('ffn_blocks.', '')
                 if layer_key == 'activation':
                     layer_key = 'relu'
+                organized['ffn'][0][layer_key] = params
+    else:
+        # Original multi-layer logic
+        pattern = re.compile(r"(?P<type>attention_blocks|ffn_blocks)\.(?P<index>\d+)\.(?P<layer>[\w_]+)")
+        
+        for name, params in flat_params.items():
+            match = pattern.match(name)
+            if match:
+                d = match.groupdict()
+                block_type = 'attention' if 'attention' in d['type'] else 'ffn'
+                layer_key = d['layer']
+                
+                # ... rest of your original logic ...
+                if block_type == 'ffn':
+                    if layer_key == 'activation':
+                        layer_key = 'relu'
+                    organized[block_type][int(d['index'])][layer_key] = params
+                    continue
+                
+                if layer_key == 'out_proj':
+                    organized[block_type][int(d['index'])]['av_matmul'] = {
+                        'type': 'MatMul_AV',
+                        'input': None,
+                        'output': params['input'][0]
+                    }
+                
+                if layer_key == 'custom_softmax':
+                    layer_key = 'softmax'
+                    organized[block_type][int(d['index'])]['qk_matmul'] = {
+                        'type': 'MatMul_QK', 
+                        'input': None, 
+                        'output': params['input'][0]
+                    }
+                
                 organized[block_type][int(d['index'])][layer_key] = params
-                continue
-            
-            if layer_key == 'out_proj':
-                # The input to out_proj is the output of av_matmul.
-                # We create the 'av_matmul' entry from this reliable data source.
-                organized[block_type][int(d['index'])]['av_matmul'] = {
-                    'type': 'MatMul_AV',
-                    'input': None,  # We don't have the matmul's input, but we don't need it
-                    'output': params['input'][0] # The ground truth we need!
-                }
-            
-            if layer_key == 'custom_softmax':
-                layer_key = 'softmax'
-                organized[block_type][int(d['index'])]['qk_matmul'] = {
-                    'type': 'MatMul_QK', 'input': None, 'output': params['input'][0]
-                }
-            
-
-            organized[block_type][int(d['index'])][layer_key] = params
-
+    
     return organized
 
 def calculate_hw_params(effective_scale):
@@ -308,7 +342,7 @@ def main(args):
     output_base_location = os.path.join(PROJECT_ROOT, "third_party", "ITA_FPGA", "simvectors")
 
     # 2. Define the parameters that will be used for the folder name
-    dims = {'S': 128, 'P': 192, 'E': 128, 'F': 256, 'H': 1}
+    dims = {'S': 128, 'P': 192, 'E': 64, 'F': 256, 'H': 1}
     activation_name = "relu"
     bias_enabled = True # Transformer class default is bias=True
 
@@ -321,7 +355,8 @@ def main(args):
     
     # --- Step 1: Create a "scaffold" of the final converted model ---
     print("--- Loading and Preparing PyTorch QAT Model ---")
-    model_qat = ITALSTMNetVIT_QAT()
+    print(f"Instantiating model with {args.num_layers} layer(s).")
+    model_qat = ITALSTMNetVIT_QAT(num_layers=args.num_layers)
     torch.backends.quantized.engine = 'qnnpack'
     
     # For perfect reproducibility, ensure the qconfig is set, just like in your training/inspection scripts
@@ -516,6 +551,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Extract PyTorch QAT data and run through the ITA hardware model for verification.")
     parser.add_argument('--checkpoint', type=str, required=True, help='Path to the final quantized PyTorch model state_dict (.pth)')
     parser.add_argument('--image', type=str, required=True, help='Path to the ground-truth input image.')
+    parser.add_argument('--num_layers', type=int, default=1, help='Number of transformer layers in the model to be verified.')
     parser.add_argument('--isolate_softmax', action='store_true', help='Inject the PyTorch ground truth after softmax to isolate its error.')
     args = parser.parse_args()
     

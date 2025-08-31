@@ -9,7 +9,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
 # Use the correct import path for your model
-from models.testing.ITA_model import ITALSTMNetVIT
+from models.ITA_single_layer_upsample_shuffle.QAT.model import ITALSTMNetVIT_QAT
 
 def check_model_quantization(checkpoint_path):
     """
@@ -18,7 +18,7 @@ def check_model_quantization(checkpoint_path):
     print(f"---  inspecting model: {checkpoint_path} ---")
 
     # 1. Instantiate the FLOATING-POINT model architecture
-    model = ITALSTMNetVIT(params={}, qat_mode=False)
+    model = ITALSTMNetVIT_QAT(params={}, qat_mode=False)
     model.eval()
 
     # --- FIX: Use the correct preparation and conversion workflow ---
