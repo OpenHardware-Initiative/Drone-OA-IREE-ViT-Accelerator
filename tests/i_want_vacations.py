@@ -501,7 +501,7 @@ def main(args):
             'Bff2': np.expand_dims(dequantize_bias_to_int32(ffn_block['fc2']), axis=0),
         }
 
-        dims = {'S': 128, 'P': 192, 'E': 128, 'F': 256, 'H': 1}
+        
         hw_params = translate_torch_scales_to_hw_params(attn_block, ffn_block, H=dims['H'])
 
         ita_sim = Transformer(ITA_N=16, path=output_dir, activation='relu', **dims, **block_tensors, quant_params=hw_params)
