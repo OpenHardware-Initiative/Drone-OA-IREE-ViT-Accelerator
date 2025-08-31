@@ -9,7 +9,7 @@ add_subdirectory(plugin)
 
 # --- 2. Define and Automate Model Compilation ---
 if(NOT DEFINED IREE_HOST_BIN_DIR)
-  message(FATAL_ERROR "IREE_HOST_BIN_DIR is not set. Please re-run cmake with: -DIREE_HOST_BIN_DIR/path/to/iree/install/bin")
+  message(FATAL_ERROR "IREE_HOST_BIN_DIR is not set. Please re-run cmake with: -DIREE_HOST_BIN_DIR=/path/to/iree/install/bin")
 endif()
 
 # Find the iree-compile executable using the provided path as a hint.
@@ -19,18 +19,28 @@ find_program(IREE_COMPILE_EXECUTABLE iree-compile
 )
 message(STATUS "Using iree-compile: ${IREE_COMPILE_EXECUTABLE}")
 
-# Define paths for our source model and the final compiled artifact.
+# --- Define paths for model, output, and all debug artifacts ---
 set(SOURCE_MODEL_MLIR "${CMAKE_CURRENT_SOURCE_DIR}/../../output/ITAViTLSTM.mlir")
 set(COMPILED_MODEL_VMFB "${CMAKE_CURRENT_BINARY_DIR}/model.vmfb")
 set(CUSTOM_SPEC_MLIR "${CMAKE_CURRENT_SOURCE_DIR}/plugin/dummy_spec.mlir")
-set(DUMP_COMPILATION_PHASES "${CMAKE_CURRENT_SOURCE_DIR}/compilation_phases")
+
+# Create a dedicated directory for all debug outputs
+set(DEBUG_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/debug_output")
+set(DUMP_COMPILATION_PHASES "${DEBUG_OUTPUT_DIR}/compilation_phases")
+set(HAL_EXECUTABLE_DUMPS "${DEBUG_OUTPUT_DIR}/hal_executables")
+set(DISPATCH_GRAPH_DOT "${DEBUG_OUTPUT_DIR}/dispatch_graph.dot")
+set(VM_SOURCE_LISTING_MLIR "${DEBUG_OUTPUT_DIR}/annotated_vm_module.mlir")
+
+# Ensure the directories for debug dumps exist before compilation
+file(MAKE_DIRECTORY ${DUMP_COMPILATION_PHASES})
+file(MAKE_DIRECTORY ${HAL_EXECUTABLE_DUMPS})
+
 
 # This command runs iree-compile to generate the .vmfb file.
-# CMake will automatically run this command if the output file is missing
-# or if any of the dependencies have changed.
 add_custom_command(
   OUTPUT ${COMPILED_MODEL_VMFB}
   COMMAND ${IREE_COMPILE_EXECUTABLE}
+    # --- Standard compilation flags from your original file ---
     --iree-hal-target-backends=llvm-cpu
     --iree-llvmcpu-target-triple=x86_64-pc-linux-gnu
     --iree-llvmcpu-target-cpu=host
@@ -40,10 +50,55 @@ add_custom_command(
     --iree-vm-target-truncate-unsupported-floats 
     --iree-llvmcpu-enable-ukernels=all
     --iree-input-demote-f32-to-f16 
-    #debug help
-    --dump-compilation-phases-to=${DUMP_COMPILATION_PHASES}
     --iree-hal-executable-object-search-path=${CMAKE_CURRENT_BINARY_DIR}/plugin/
     --iree-preprocessing-transform-spec-filename=${CUSTOM_SPEC_MLIR}
+
+    # =================================================================
+    # --- Comprehensive Debugging and Verbosity Flags ---
+    # =================================================================
+    
+    # [1] Enable verification at each step of the pipeline. Aborts on failure.
+    --verify
+    
+    # [2] Print MLIR IR verbosely before and after every pass.
+    # WARNING: This will produce a very large amount of console output.
+    #--mlir-print-ir-before-all
+    #--mlir-print-ir-after-all
+    #--mlir-print-ir-after-change
+    
+    # [3] On any diagnostic error, print the failing operation and a stack trace.
+    --mlir-print-op-on-diagnostic
+    --mlir-print-stacktrace-on-diagnostic
+
+    # [4] Display statistics and timing information for each compiler pass.
+    --mlir-pass-statistics
+    --mlir-timing
+    
+    # [5] Dump MLIR for each major compilation phase to a directory.
+    --dump-compilation-phases-to=${DUMP_COMPILATION_PHASES}
+    
+    # [6] Dump all HAL executable artifacts (sources, intermediates, binaries).
+    #--iree-hal-dump-executable-files-to=${HAL_EXECUTABLE_DUMPS}
+    
+    # [7] Generate a .dot graph file of the dispatch flow.
+    #--iree-flow-dump-dispatch-graph-output-file=${DISPATCH_GRAPH_DOT}
+    
+    # [8] Set the highest debug level for executable translation.
+    --iree-hal-executable-debug-level=3
+    
+    # [9] For the LLVMCPU backend, generate and embed DWARF/PDB symbols.
+    --iree-llvmcpu-debug-symbols=true
+    
+    # [10] Keep intermediate linker artifacts (like .o files) for inspection.
+    --iree-llvmcpu-keep-linker-artifacts=true
+    
+    # [11] Make the output .vmfb file a polyglot zip for easier inspection.
+    --iree-vm-emit-polyglot-zip=true
+    
+    # [12] Dump an annotated version of the final VM MLIR module.
+    --iree-vm-bytecode-source-listing=${VM_SOURCE_LISTING_MLIR}
+
+    # --- Input/Output Files ---
     ${SOURCE_MODEL_MLIR}
     -o ${COMPILED_MODEL_VMFB}
   DEPENDS
@@ -52,7 +107,7 @@ add_custom_command(
     ${SOURCE_MODEL_MLIR}
     ${CUSTOM_SPEC_MLIR}
   VERBATIM
-  COMMENT "Compiling model with custom ops to ${COMPILED_MODEL_VMFB}"
+  COMMENT "Compiling model with MAX DEBUG FLAGS to ${COMPILED_MODEL_VMFB}"
 )
 
 # This target provides a clean way to trigger the custom command above.

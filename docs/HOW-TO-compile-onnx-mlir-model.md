@@ -5,13 +5,13 @@
 In this case we use this command:
 
 ```bash
-iree-compile output/ita_model_for_hardware.mlir -o output/ITAViTLSTM_f16.vmfb \
+iree-compile models/ITA_single_layer_upsample_shuffle/ITAViTLSTM.mlir -o models/ITA_single_layer_upsample_shuffle/ITAViTLSTM.vmfb \
 --iree-hal-target-backends=llvm-cpu \
 --iree-llvmcpu-target-triple=aarch64-linux-gnu \
 --iree-llvmcpu-target-cpu=cortex-a53  \
 --iree-opt-aggressively-propagate-transposes=true \
 --iree-global-opt-propagate-transposes=true \
---iree-hal-executable-debug-level=3 \
+--iree-hal-executable-debug-level=0 \
 --iree-opt-data-tiling=true \
 --aarch64-use-aa \
 --iree-dispatch-creation-enable-aggressive-fusion=false \
