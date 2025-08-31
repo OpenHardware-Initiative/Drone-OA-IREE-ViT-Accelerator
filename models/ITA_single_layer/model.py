@@ -62,6 +62,20 @@ class ITALSTMNetVIT_single_layer(nn.Module):
         self.lstm = nn.LSTM(input_size=517, hidden_size=128, num_layers=3, dropout=0.1)
         self.nn_fc2 = spectral_norm(nn.Linear(128, 3))
         
+        # --- Feature Fusion Layers (Float) from LSTMNetVIT ---
+        # NOTE: The target model's fusion depends on multi-stage inputs of different resolutions.
+        # We will adapt this by using intermediate outputs from our single encoder stream.
+        self.up_sample = nn.Upsample(size=(32, 48), mode='bilinear', align_corners=True)
+        self.pxShuffle = nn.PixelShuffle(upscale_factor=2)
+        
+        # Input channels = (E/4 for pxShuffle) + (E for up_sample) = 128/4 + 128 = 32 + 128 = 160
+        # Output channels = 12, to get a flattened size of 12 * 32 * 48 = 18432
+        # This differs from the target's 4608 due to the single-stream encoder's feature map sizes.
+        # Let's adjust the down_sample layer to produce a similar feature vector size.
+        # We can use an adaptive pool to fix the output size before the decoder.
+        self.down_sample = nn.Conv2d(160, 48, 3, padding=1)
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((8, 12)) # Output size -> 48 * 8 * 12 = 4608
+        
     def forward(self, X):
         X = refine_inputs(X)
         img_data, additional_data, quat_data = X[0], X[1], X[2]

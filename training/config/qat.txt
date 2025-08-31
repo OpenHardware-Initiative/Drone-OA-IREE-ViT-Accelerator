@@ -2,9 +2,9 @@
 
 # Device and paths
 device = cuda # QAT fine-tuning should be done on a GPU for speed
-basedir = /Projects/Agus/Drone-OA-IREE-ViT-Accelerator
+basedir = /scratch2/agustin/Drone-OA-IREE-ViT-Accelerator
 logdir = training/logs
-datadir = training/datasets # Corrected path to parent folder
+datadir = training # Corrected path to parent folder
 
 # Dataset settings
 dataset = data # Assuming you want to fine-tune on the full dataset
@@ -13,7 +13,7 @@ short = 0 # Use 0 to train on all data
 
 # --- CORRECTED: Load the pre-trained float model ---
 load_checkpoint_qat = True
-checkpoint_path = /Projects/Agus/Drone-OA-IREE-ViT-Accelerator/training/logs/upscale_shuffle_v0.1/model_000125.pth
+checkpoint_path = /scratch2/agustin/Drone-OA-IREE-ViT-Accelerator/training/logs/d08_31_t03_44/model_000200.pth
 
 # Training hyperparameters for fine-tuning
 lr = 1e-5 # BEST PRACTICE: Use a smaller learning rate (e.g., 1/10th) for fine-tuning

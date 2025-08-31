@@ -6,13 +6,13 @@
 ## Core Paths
 ## -------------------------------------------------------------------
 # basedir should point to your project's root directory.
-basedir = /Projects/Agus/Drone-OA-IREE-ViT-Accelerator
+basedir = /scratch2/agustin/Drone-OA-IREE-ViT-Accelerator
 
 # Directory for saving logs, checkpoints, and TensorBoard files.
 logdir = training/logs
 
 # Parent directory where your datasets are stored.
-datadir = /Projects/Agus/Drone-OA-IREE-ViT-Accelerator/training/datasets
+datadir = /scratch2/agustin/Drone-OA-IREE-ViT-Accelerator/training
 
 
 ## -------------------------------------------------------------------
@@ -22,7 +22,7 @@ datadir = /Projects/Agus/Drone-OA-IREE-ViT-Accelerator/training/datasets
 dataset = data
 
 # Select your custom model using the key you added in train.py.
-model_type = ITALSTMNetVIT_single_layer
+model_type = ITALSTMNetVIT
 
 # Validation split fraction. 0.2 (20%) is a robust choice.
 val_split = 0.2
