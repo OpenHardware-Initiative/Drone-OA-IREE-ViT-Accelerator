@@ -90,27 +90,27 @@ module attributes {transform.with_named_sequence} {
   } // hal.executable
 
   // --- Utility Functions for Dispatching ---
-  util.func private @call_ITAFF(%in_arg: tensor<1x128x128xf16>, %out_arg: tensor<1x128x128xf16>) -> tensor<1x128x128xf16> {
+  util.func private @call_ITAFF(%in_arg: tensor<1x128x128xf16>) -> tensor<1x128x128xf16> {
     
     %workload = arith.constant 1 : index
     
     // Dispatch with NO constants and only 2 tensors (input and output)
     %result = flow.dispatch @custom_ita_executable::@embedded_elf_x86_64::@ITAFF[%workload](
-      %in_arg, %out_arg
-    ) : (tensor<1x128x128xf16>, tensor<1x128x128xf16>) 
+      %in_arg
+    ) : (tensor<1x128x128xf16>) 
       -> tensor<1x128x128xf16>
     
     util.return %result : tensor<1x128x128xf16>
   }
   
-  util.func private @call_ITASelfAttention(%in_arg: tensor<1x128x128xf16>, %out_arg: tensor<1x128x128xf16>) -> tensor<1x128x128xf16> {
+  util.func private @call_ITASelfAttention(%in_arg: tensor<1x128x128xf16>) -> tensor<1x128x128xf16> {
     
     %workload = arith.constant 1 : index
     
     // Dispatch with NO constants and only 2 tensors (input and output)
     %result = flow.dispatch @custom_ita_executable::@embedded_elf_x86_64::@ITASelfAttention[%workload](
-      %in_arg, %out_arg
-    ) : (tensor<1x128x128xf16>, tensor<1x128x128xf16>) 
+      %in_arg
+    ) : (tensor<1x128x128xf16>) 
       -> tensor<1x128x128xf16>
     
     util.return %result : tensor<1x128x128xf16>
@@ -120,12 +120,16 @@ module attributes {transform.with_named_sequence} {
   transform.named_sequence @match_ITAFF(%root: !transform.any_op {transform.readonly}) 
       -> (!transform.any_value, !transform.any_value) {
     %ins, %outs = transform.iree.match.cast_compatible_dag_from_root %root {
-      ^bb0(%arg_in: tensor<1x128x128xf16>, %arg_out: tensor<1x128x128xf16>):
+      ^bb0(%arg_in: tensor<1x128x128xf16>):
+
+        %c0 = arith.constant 0 : index
+        %d0 = tensor.dim %arg_in, %c0 : tensor<1x128x128xf16>
+        %empty = tensor.empty() {"match.operation_name_only"} : tensor<1x128x128xf16>
 
         %abs = linalg.generic {
           indexing_maps = [#map1, #map1], 
           iterator_types = ["parallel", "parallel", "parallel"]
-        } ins(%arg_in : tensor<1x128x128xf16>) outs(%arg_out : tensor<1x128x128xf16>) {
+        } ins(%arg_in : tensor<1x128x128xf16>) outs(%empty : tensor<1x128x128xf16>) {
           ^bb0(%in: f16, %out: f16):
             %res = math.absf %in : f16
             linalg.yield %res : f16
@@ -137,12 +141,17 @@ module attributes {transform.with_named_sequence} {
   transform.named_sequence @match_ITASelfAttention(%root: !transform.any_op {transform.readonly}) 
       -> (!transform.any_value, !transform.any_value) {
     %ins, %outs = transform.iree.match.cast_compatible_dag_from_root %root {
-      ^bb0(%arg_in: tensor<1x128x128xf16>, %arg_out: tensor<1x128x128xf16>):
+      ^bb0(%arg_in: tensor<1x128x128xf16>):
+
+        %c0 = arith.constant 0 : index
+        %d0 = tensor.dim %arg_in, %c0 : tensor<1x128x128xf16>
+        // --------------------------------------------------------------------
+        %empty = tensor.empty() {"match.operation_name_only"} : tensor<1x128x128xf16>
 
         %neg = linalg.generic {
           indexing_maps = [#map1, #map1], 
           iterator_types = ["parallel", "parallel", "parallel"]
-        } ins(%arg_in : tensor<1x128x128xf16>) outs(%arg_out : tensor<1x128x128xf16>) {
+        } ins(%arg_in : tensor<1x128x128xf16>) outs(%empty : tensor<1x128x128xf16>) {
           ^bb0(%in: f16, %out: f16):
             %res = arith.negf %in : f16
             linalg.yield %res : f16
