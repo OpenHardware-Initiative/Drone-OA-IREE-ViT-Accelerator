@@ -1,14 +1,13 @@
 // --- Target and Layout Definitions ---
-#executable_target_embedded_elf_x86_64 = #hal.executable.target<"llvm-cpu", "embedded-elf-x86_64", {
-  cpu = "znver2",
-  cpu_features = "+prfchw,-cldemote,+avx,+aes,+sahf,+pclmul,-xop,+crc32,-amx-fp8,+xsaves,-avx512fp16,-usermsr,-sm4,-egpr,+sse4.1,-avx512ifma,+xsave,+sse4.2,-tsxldtrk,-sm3,-ptwrite,-widekl,-movrs,-invpcid,+64bit,+xsavec,-avx10.1-512,-avx512vpopcntdq,+cmov,-avx512vp2intersect,-avx512cd,+movbe,-avxvnniint8,-ccmp,-amx-int8,-kl,-avx10.1-256,-sha512,-avxvnni,-rtm,+adx,+avx2,-hreset,-movdiri,-serialize,-vpclmulqdq,-avx512vl,-uintr,-cf,+clflushopt,-raoint,-cmpccxadd,+bmi,-amx-tile,+sse,-avx10.2-256,-gfni,-avxvnniint16,-amx-fp16,-zu,-ndd,+xsaveopt,+rdrnd,-avx512f,-amx-bf16,-avx512bf16,-avx512vnni,-push2pop2,+cx8,-avx512bw,+sse3,-pku,-nf,-amx-tf32,-amx-avx512,+fsgsbase,+clzero,+mwaitx,-lwp,+lzcnt,+sha,-movdir64b,-ppx,+wbnoinvd,-enqcmd,-amx-transpose,-avx10.2-512,-avxneconvert,-tbm,-pconfig,-amx-complex,+ssse3,+cx16,+bmi2,+fma,+popcnt,-avxifma,+f16c,-avx512bitalg,+rdpru,+clwb,+mmx,+sse2,+rdseed,-avx512vbmi2,-prefetchi,-amx-movrs,+rdpid,-fma4,-avx512vbmi,-shstk,-vaes,-waitpkg,-sgx,+fxsr,-avx512dq,+sse4a",
-  data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
-  native_vector_size = 32 : index,
-  target_triple = "x86_64-unknown-unknown-eabi-elf"
+#executable_target_aarch64 = #hal.executable.target<"llvm-cpu", "aarch64-linux-gnu", {
+  cpu = "cortex-a53",
+  cpu_features = "+neon,+fp-armv8,+crypto",
+  // The data_layout and target_triple can often be inferred by IREE,
+  // but specifying them can be more robust.
+  target_triple = "aarch64-unknown-linux-gnu"
 }>
 
 #pipeline_layout = #hal.pipeline.layout<constants = 3, bindings = [
-  #hal.pipeline.binding<storage_buffer, ReadOnly>,
   #hal.pipeline.binding<storage_buffer, ReadOnly>,
   #hal.pipeline.binding<storage_buffer>
 ]>
@@ -19,8 +18,8 @@ module attributes {transform.with_named_sequence} {
   
   // --- Executable Definition ---
   hal.executable private @custom_ita_executable {
-    hal.executable.variant public @embedded_elf_x86_64 target(#executable_target_embedded_elf_x86_64) 
-    objects([#hal.executable.object<{path = "dummy_dispatch_x86_64.o"}>]) {
+    hal.executable.variant public @aarch64_elf target(#executable_target_aarch64) 
+    objects([#hal.executable.object<{path = "ITA_dispatch_aarch64.o"}>]) {
       
       // Export for ITAFF (absolute value)
       hal.executable.export public @ITAFF ordinal(0) layout(#pipeline_layout) 
@@ -39,13 +38,13 @@ module attributes {transform.with_named_sequence} {
       builtin.module {
         // External function declarations
         func.func private @ITAFF_workgroup(
-          %in_binding: memref<?x?x?xf16>, %out_binding: memref<?x?x?xf16>, 
-          %d0: index, %d1: index, %d2: index
+          memref<?x?x?xf16>, memref<?x?x?xf16>, 
+          index, index, index
         ) attributes {hal.import.static}
         
         func.func private @ITASelfAttention_workgroup(
-          %in_binding: memref<?x?x?xf16>, %out_binding: memref<?x?x?xf16>, 
-          %d0: index, %d1: index, %d2: index
+          memref<?x?x?xf16>, memref<?x?x?xf16>, 
+          index, index, index
         ) attributes {hal.import.static}
         
         // Wrapper for ITAFF
@@ -65,7 +64,7 @@ module attributes {transform.with_named_sequence} {
           // Get tensor bindings
           %in_binding = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) : 
             memref<?x?x?xf16>{%d0, %d1, %d2}
-          %out_binding = hal.interface.binding.subspan layout(#pipeline_layout) binding(2) alignment(64) offset(%c0) : 
+          %out_binding = hal.interface.binding.subspan layout(#pipeline_layout) binding(1) alignment(64) offset(%c0) : 
             memref<?x?x?xf16>{%d0, %d1, %d2}
           
           // Call external function
@@ -100,16 +99,14 @@ module attributes {transform.with_named_sequence} {
           return
         }
       }
-    } // hal.executable.variant
-  } // hal.executable
+    }
+  }
 
   // --- Utility Functions for Dispatching ---
   util.func private @call_ITAFF(%in_arg: tensor<?x?x?xf16>, %out_arg: tensor<?x?x?xf16>) -> tensor<?x?x?xf16> {
-    
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c2 = arith.constant 2 : index
-    
     %d0 = tensor.dim %in_arg, %c0 : tensor<?x?x?xf16>
     %d1 = tensor.dim %in_arg, %c1 : tensor<?x?x?xf16>
     %d2 = tensor.dim %in_arg, %c2 : tensor<?x?x?xf16>
@@ -121,21 +118,18 @@ module attributes {transform.with_named_sequence} {
     
     %workload = arith.constant 1 : index
     
-    // Dispatch with single workgroup - pass both tensors
-    %result = flow.dispatch @custom_ita_executable::@embedded_elf_x86_64::@ITAFF[%workload](
-      %d0_i32, %d1_i32, %d2_i32, %in_arg, %out_arg
-    ) : (i32, i32, i32, tensor<?x?x?xf16>{%d0, %d1, %d2}, tensor<?x?x?xf16>{%d0, %d1, %d2}) 
-      -> tensor<?x?x?xf16>{%d0, %d1, %d2}
+    // Dispatch with single workgroup
+    %result = flow.dispatch @custom_ita_executable::@aarch64_elf::@ITAFF[%workload](
+      %d0_i32, %d1_i32, %d2_i32, %in_arg
+    ) : (i32, i32, i32, tensor<?x?x?xf16>{%d0, %d1, %d2}) -> tensor<?x?x?xf16>{%d0, %d1, %d2}
     
     util.return %result : tensor<?x?x?xf16>
   }
   
   util.func private @call_ITASelfAttention(%in_arg: tensor<?x?x?xf16>, %out_arg: tensor<?x?x?xf16>) -> tensor<?x?x?xf16> {
-    
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c2 = arith.constant 2 : index
-    
     %d0 = tensor.dim %in_arg, %c0 : tensor<?x?x?xf16>
     %d1 = tensor.dim %in_arg, %c1 : tensor<?x?x?xf16>
     %d2 = tensor.dim %in_arg, %c2 : tensor<?x?x?xf16>
@@ -147,11 +141,10 @@ module attributes {transform.with_named_sequence} {
     
     %workload = arith.constant 1 : index
     
-    // Dispatch with single workgroup - pass both tensors
-    %result = flow.dispatch @custom_ita_executable::@embedded_elf_x86_64::@ITASelfAttention[%workload](
-      %d0_i32, %d1_i32, %d2_i32, %in_arg, %out_arg
-    ) : (i32, i32, i32, tensor<?x?x?xf16>{%d0, %d1, %d2}, tensor<?x?x?xf16>{%d0, %d1, %d2}) 
-      -> tensor<?x?x?xf16>{%d0, %d1, %d2}
+    // Dispatch with single workgroup
+    %result = flow.dispatch @custom_ita_executable::@aarch64_elf::@ITASelfAttention[%workload](
+      %d0_i32, %d1_i32, %d2_i32, %in_arg
+    ) : (i32, i32, i32, tensor<?x?x?xf16>{%d0, %d1, %d2}) -> tensor<?x?x?xf16>{%d0, %d1, %d2}
     
     util.return %result : tensor<?x?x?xf16>
   }
@@ -161,15 +154,6 @@ module attributes {transform.with_named_sequence} {
       -> (!transform.any_value, !transform.any_value) {
     %ins, %outs = transform.iree.match.cast_compatible_dag_from_root %root {
       ^bb0(%arg_in: tensor<?x?x?xf16>, %arg_out: tensor<?x?x?xf16>):
-
-        %c0 = arith.constant 0 : index
-        %c1 = arith.constant 1 : index
-        %c2 = arith.constant 2 : index
-        
-        %d0 = tensor.dim %arg_in, %c0 : tensor<?x?x?xf16>
-        %d1 = tensor.dim %arg_in, %c1 : tensor<?x?x?xf16>
-        %d2 = tensor.dim %arg_in, %c2 : tensor<?x?x?xf16>
-
         %abs = linalg.generic {
           indexing_maps = [#map1, #map1], 
           iterator_types = ["parallel", "parallel", "parallel"]
@@ -186,15 +170,6 @@ module attributes {transform.with_named_sequence} {
       -> (!transform.any_value, !transform.any_value) {
     %ins, %outs = transform.iree.match.cast_compatible_dag_from_root %root {
       ^bb0(%arg_in: tensor<?x?x?xf16>, %arg_out: tensor<?x?x?xf16>):
-
-        %c0 = arith.constant 0 : index
-        %c1 = arith.constant 1 : index
-        %c2 = arith.constant 2 : index
-        
-        %d0 = tensor.dim %arg_in, %c0 : tensor<?x?x?xf16>
-        %d1 = tensor.dim %arg_in, %c1 : tensor<?x?x?xf16>
-        %d2 = tensor.dim %arg_in, %c2 : tensor<?x?x?xf16>
-
         %neg = linalg.generic {
           indexing_maps = [#map1, #map1], 
           iterator_types = ["parallel", "parallel", "parallel"]
