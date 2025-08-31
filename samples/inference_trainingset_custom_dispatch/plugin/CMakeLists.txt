@@ -1,12 +1,10 @@
-# custom_ops/CMakeLists.txt
+# plugin/CMakeLists.txt
+# Build configuration for custom operations
 
-# This sample only builds for x86-64. You can add more architectures
-# by creating new commands and updating the MLIR spec.
 set(_ARCH "x86_64")
-set(_LLVM_ARCH "x86_64") # LLVM target triple component
+set(_LLVM_ARCH "x86_64")
 
-# Find a working clang compiler. IREE's build system provides IREE_CLANG_BINARY,
-# but we can try to find it on the system as well.
+# Find clang compiler
 if(DEFINED IREE_CLANG_BINARY AND EXISTS "${IREE_CLANG_BINARY}")
   set(CLANG_EXECUTABLE ${IREE_CLANG_BINARY})
 else()
@@ -14,40 +12,48 @@ else()
 endif()
 message(STATUS "Using clang for custom ops: ${CLANG_EXECUTABLE}")
 
-# This custom command compiles our C code into a freestanding ELF object file.
+# Build the object file with the correct name
 add_custom_command(
   OUTPUT
-    ${CMAKE_CURRENT_BINARY_DIR}/dummy_dispatch${_ARCH}.o
+    ${CMAKE_CURRENT_BINARY_DIR}/dummy_dispatch_${_ARCH}.o
   DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/custom_unary_ops.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/dummy_dispatch.c
     ${CLANG_EXECUTABLE}
   COMMAND ${CLANG_EXECUTABLE}
     # --- Target and environment ---
-    -target ${_LLVM_ARCH}-none-elf # Crucial: specifies a bare-metal target
+    -target ${_LLVM_ARCH}-none-elf
     -std=c17
-    -ffreestanding # Don't link against libc
-    -fvisibility=hidden # Hide symbols by default
+    -ffreestanding
+    -fvisibility=hidden
     -fno-plt
     -fno-rtti
     -fno-exceptions
+    -fPIC  # Position independent code required for shared objects
     # --- Optimization and code gen ---
     -O2
-    -g # Add debug symbols
+    -g
     -fdata-sections
     -ffunction-sections
+    # --- Architecture specific ---
+    -march=znver2  # Match the CPU in the MLIR spec
+    -mtune=znver2  # Optimize for Zen 2 architecture
     # --- Input / Output ---
     -c ${CMAKE_CURRENT_SOURCE_DIR}/dummy_dispatch.c
-    -o ${CMAKE_CURRENT_BINARY_DIR}/dummy_dispatch${_ARCH}.o
+    -o ${CMAKE_CURRENT_BINARY_DIR}/dummy_dispatch_${_ARCH}.o
   VERBATIM
-  COMMENT "Building custom unary op object for ${_ARCH}"
+  COMMENT "Building custom ITA ops object for ${_ARCH}"
 )
 
-# Create a target that represents the build step for our object file.
-add_custom_target(dummy_dispatchobject_${_ARCH} DEPENDS
-  ${CMAKE_CURRENT_BINARY_DIR}/dummy_dispatch${_ARCH}.o
+# Create target for the object file
+add_custom_target(dummy_dispatch_object_${_ARCH} 
+  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/dummy_dispatch_${_ARCH}.o
 )
 
-# This is a convenience target. Building it will ensure all custom objects are created.
-add_custom_target(custom_ops_objects DEPENDS
-    dummy_dispatchobject_${_ARCH}
+# Export the object file path for the parent CMakeLists.txt
+set(CUSTOM_OP_OBJECT_FILE 
+  ${CMAKE_CURRENT_BINARY_DIR}/dummy_dispatch_${_ARCH}.o 
+  PARENT_SCOPE
 )
+
+# Convenience target
+add_custom_target(custom_ops_objects DEPENDS dummy_dispatch_object_${_ARCH})
