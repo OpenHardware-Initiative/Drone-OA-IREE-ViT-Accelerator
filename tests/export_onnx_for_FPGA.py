@@ -3,20 +3,16 @@
 import torch
 import os, sys
 
-# Adjust these imports based on your project structure.
-# This assumes the script is in the 'training' folder.
-
 # --- Ensure correct paths for imports ---
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
-from models.ITA.QAT.model import ITALSTMNetVIT_QAT
-from models.ITA.export.ITA_ONNX import ITAForONNXExport
+from models.ITA_single_layer_upsample_shuffle.model import ITALSTMNetVIT
+from models.ITA_single_layer_upsample_shuffle.export.model import ITAForONNXExport
 
-#OUTPUT_BASE_LOCATION = os.path.join(PROJECT_ROOT, "output", "ITA_FPGA", "simvectors")
-
-QUANTIZED_ONNX_PATH = f"{PROJECT_ROOT}/output/ita_model_for_hardware.onnx"
-MLIR_PATH = f"{PROJECT_ROOT}/output/ita_model_for_hardware.mlir"
+# --- Path Definitions (Corrected Naming) ---
+FLOAT_ONNX_PATH = f"{PROJECT_ROOT}/models/ITA_single_layer_upsample_shuffle/export/ITAViTLSTM_float.onnx"
+MLIR_PATH = f"{PROJECT_ROOT}/models/ITA_single_layer_upsample_shuffle/export/ITAViTLSTM_float.mlir"
 
 def main():
     """
@@ -27,24 +23,21 @@ def main():
 
     # --- Step 1: Load the trained and quantized model state ---
     
-    # Path to the saved model from your QAT run
-    trained_model_path = f"{PROJECT_ROOT}/training/logs/d08_11_t16_00_qat_replace_model/model_quantized_final.pth"
-    print(f"Loading trained quantized model from: {trained_model_path}")
+    trained_model_path = f"{PROJECT_ROOT}/models/ITA_single_layer_upsample_shuffle/model_000205.pth"
+    print(f"Loading trained model state from: {trained_model_path}")
     if not os.path.exists(trained_model_path):
         print(f"Error: Trained model not found at {trained_model_path}")
         return
 
-    print(f"Loading trained quantized state_dict from: {trained_model_path}")
-    
     # Instantiate a fresh QAT model on the CPU in eval mode
-    # This model will act as the source for our float weights.
-    trained_model = ITALSTMNetVIT_QAT()
+    trained_model = ITALSTMNetVIT()
     trained_model.eval()
     
-    # Load the state dict from the .pth file
-    trained_model.load_state_dict(torch.load(trained_model_path), strict=False)
+    # ✅ CRITICAL FIX: Load state dict with map_location to ensure it works on CPU-only machines.
+    state_dict = torch.load(trained_model_path, map_location=torch.device('cpu'))
+    trained_model.load_state_dict(state_dict, strict=False)
     
-    print("Successfully loaded trained model.")
+    print("Successfully loaded trained model state onto CPU.")
 
     # --- Step 2: Instantiate the export model and transfer weights ---
     
@@ -58,7 +51,6 @@ def main():
     # --- Step 3: Create a dummy input for tracing ---
     
     print("Creating dummy input for ONNX tracing...")
-    # These shapes should match the expected input dimensions of your model
     batch_size = 1
     img_data = torch.randn(batch_size, 1, 60, 90, requires_grad=False)
     additional_data = torch.randn(batch_size, 1, requires_grad=False)
@@ -74,33 +66,29 @@ def main():
 
     # --- Step 4: Export to ONNX ---
     
-    print(f"Exporting model to {QUANTIZED_ONNX_PATH}...")
+    print(f"Exporting model to {FLOAT_ONNX_PATH}...")
     
     torch.onnx.export(
         model_for_export,
-        (dummy_input,),
-        QUANTIZED_ONNX_PATH,
+        (dummy_input,),  # The comma is important to make it a tuple of arguments
+        FLOAT_ONNX_PATH,
         export_params=True,
-        opset_version=17,  # A reasonably modern opset version
+        opset_version=17,
         do_constant_folding=True,
         input_names=['image', 'additional_data', 'quat_data', 'hidden_in_h', 'hidden_in_c'],
         output_names=['output', 'hidden_out_h', 'hidden_out_c'],
-        #dynamo=True
     )
     
     print("--- ONNX Export Complete! --- ✅")
-    print(f"Model saved to: {os.path.abspath(QUANTIZED_ONNX_PATH)}")
+    print(f"Model saved to: {os.path.abspath(FLOAT_ONNX_PATH)}")
     
-    print("\n✅ Step 4: Exporting to MLIR...")
-    print("To convert the quantized ONNX model to MLIR, run the following command in your terminal:")
+    print("\n✅ Step 5: Exporting to MLIR...")
+    print("To convert the ONNX model to MLIR, run the following command:")
     print("-" * 70)
-    # Use IREE's (Intermediate Representation and Execution Environment) tool
-    # You may need to add flags to target your specific hardware accelerator,
-    # for example: --iree-hal-target-backends=...
-    mlir_command = f"iree-import-onnx {QUANTIZED_ONNX_PATH} --opset-version 17 -o {MLIR_PATH} "
+    mlir_command = f"iree-import-onnx {FLOAT_ONNX_PATH} --opset-version 17 -o {MLIR_PATH}"
     print(f"👉 \033[1m{mlir_command}\033[0m")
     print("-" * 70)
-    print("\nPTQ process with ONNX and MLIR export instructions are complete! 🎉")
+    print("\nExport process instructions are complete! 🎉")
 
 
 if __name__ == "__main__":

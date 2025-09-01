@@ -2,7 +2,7 @@
 # Build configuration for custom operations
 
 set(_ARCH "x86_64")
-set(_LLVM_ARCH "x86_64")
+set(_LLVM_ARCH "embedded-elf-x86_64")
 
 # Find clang compiler
 if(DEFINED IREE_CLANG_BINARY AND EXISTS "${IREE_CLANG_BINARY}")

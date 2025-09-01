@@ -49,7 +49,7 @@ add_custom_command(
     --iree-dispatch-creation-enable-aggressive-fusion=false 
     --iree-vm-target-truncate-unsupported-floats 
     --iree-llvmcpu-enable-ukernels=all
-    --iree-input-demote-f32-to-f16 
+    #--iree-input-demote-f32-to-f16 
     --iree-hal-executable-object-search-path=${CMAKE_CURRENT_BINARY_DIR}/plugin/
     --iree-preprocessing-transform-spec-filename=${CUSTOM_SPEC_MLIR}
 

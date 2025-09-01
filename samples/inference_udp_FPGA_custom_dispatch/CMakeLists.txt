@@ -18,8 +18,8 @@ set(IREE_COMPILE_FLAGS
   --iree-llvmcpu-target-cpu=cortex-a53
   --iree-opt-aggressively-propagate-transposes=true
   --iree-global-opt-propagate-transposes=true
-  --iree-hal-executable-debug-level=3
-  --iree-opt-data-tiling=false
+  #--iree-hal-executable-debug-level=3
+  --iree-opt-data-tiling=true
   --aarch64-use-aa
   --iree-dispatch-creation-enable-aggressive-fusion=false
   --iree-vm-target-truncate-unsupported-floats
@@ -32,7 +32,7 @@ set(IREE_COMPILE_FLAGS
   --dump-compilation-phases-to=${CMAKE_CURRENT_SOURCE_DIR}/compilation_phases
 )
 
-set(SOURCE_MODEL_MLIR "${CMAKE_CURRENT_SOURCE_DIR}/../../output/ITAViTLSTM.mlir")
+set(SOURCE_MODEL_MLIR "${CMAKE_CURRENT_SOURCE_DIR}/../../models/ITA_single_layer_upsample_shuffle/export/ITAViTLSTM_float.mlir")
 
 # --- 3. Custom Command to Compile the CUSTOM DISPATCH Model ---
 set(COMPILED_MODEL_CUSTOM_FILENAME "lstmnetvit_custom_aarch64.vmfb")

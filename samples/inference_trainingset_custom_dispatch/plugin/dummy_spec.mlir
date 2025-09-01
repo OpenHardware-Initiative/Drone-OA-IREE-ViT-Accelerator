@@ -1,11 +1,6 @@
 // --- Target and Layout Definitions ---
-#executable_target_embedded_elf_x86_64 = #hal.executable.target<"llvm-cpu", "embedded-elf-x86_64", {
-  cpu = "znver2",
-  cpu_features = "+prfchw,-cldemote,+avx,+aes,+sahf,+pclmul,-xop,+crc32,-amx-fp8,+xsaves,-avx512fp16,-usermsr,-sm4,-egpr,+sse4.1,-avx512ifma,+xsave,+sse4.2,-tsxldtrk,-sm3,-ptwrite,-widekl,-movrs,-invpcid,+64bit,+xsavec,-avx10.1-512,-avx512vpopcntdq,+cmov,-avx512vp2intersect,-avx512cd,+movbe,-avxvnniint8,-ccmp,-amx-int8,-kl,-avx10.1-256,-sha512,-avxvnni,-rtm,+adx,+avx2,-hreset,-movdiri,-serialize,-vpclmulqdq,-avx512vl,-uintr,-cf,+clflushopt,-raoint,-cmpccxadd,+bmi,-amx-tile,+sse,-avx10.2-256,-gfni,-avxvnniint16,-amx-fp16,-zu,-ndd,+xsaveopt,+rdrnd,-avx512f,-amx-bf16,-avx512bf16,-avx512vnni,-push2pop2,+cx8,-avx512bw,+sse3,-pku,-nf,-amx-tf32,-amx-avx512,+fsgsbase,+clzero,+mwaitx,-lwp,+lzcnt,+sha,-movdir64b,-ppx,+wbnoinvd,-enqcmd,-amx-transpose,-avx10.2-512,-avxneconvert,-tbm,-pconfig,-amx-complex,+ssse3,+cx16,+bmi2,+fma,+popcnt,-avxifma,+f16c,-avx512bitalg,+rdpru,+clwb,+mmx,+sse2,+rdseed,-avx512vbmi2,-prefetchi,-amx-movrs,+rdpid,-fma4,-avx512vbmi,-shstk,-vaes,-waitpkg,-sgx,+fxsr,-avx512dq,+sse4a",
-  data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
-  native_vector_size = 32 : index,
-  target_triple = "x86_64-unknown-unknown-eabi-elf"
-}>
+#executable_target_embedded_elf_x86_64 = #hal.executable.target<"llvm-cpu", "x86_64", {cpu = "znver2", cpu_features = "+prfchw,-cldemote,+avx,+aes,+sahf,+pclmul,-xop,+crc32,-amx-fp8,+xsaves,-avx512fp16,-usermsr,-sm4,-egpr,+sse4.1,-avx512ifma,+xsave,+sse4.2,-tsxldtrk,-sm3,-ptwrite,-widekl,-movrs,-invpcid,+64bit,+xsavec,-avx10.1-512,-avx512vpopcntdq,+cmov,-avx512vp2intersect,-avx512cd,+movbe,-avxvnniint8,-ccmp,-amx-int8,-kl,-avx10.1-256,-sha512,-avxvnni,-rtm,+adx,+avx2,-hreset,-movdiri,-serialize,-vpclmulqdq,-avx512vl,-uintr,-cf,+clflushopt,-raoint,-cmpccxadd,+bmi,-amx-tile,+sse,-avx10.2-256,-gfni,-avxvnniint16,-amx-fp16,-zu,-ndd,+xsaveopt,+rdrnd,-avx512f,-amx-bf16,-avx512bf16,-avx512vnni,-push2pop2,+cx8,-avx512bw,+sse3,-pku,-nf,-amx-tf32,-amx-avx512,+fsgsbase,+clzero,+mwaitx,-lwp,+lzcnt,+sha,-movdir64b,-ppx,+wbnoinvd,-enqcmd,-amx-transpose,-avx10.2-512,-avxneconvert,-tbm,-pconfig,-amx-complex,+ssse3,+cx16,+bmi2,+fma,+popcnt,-avxifma,+f16c,-avx512bitalg,+rdpru,+clwb,+mmx,+sse2,+rdseed,-avx512vbmi2,-prefetchi,-amx-movrs,+rdpid,-fma4,-avx512vbmi,-shstk,-vaes,-waitpkg,-sgx,+fxsr,-avx512dq,+sse4a", data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128", iree.encoding.resolver = #iree_cpu.cpu_encoding_resolver<>, max_stack_allocation_size = 32768 : i64, native_vector_size = 32 : i64, target_triple = "x86_64-pc-linux-gnu", ukernels = "all"}>
+
 
 // Pipeline layout with NO constants, 2 bindings (input and output)
 #pipeline_layout = #hal.pipeline.layout<constants = 0, bindings = [
@@ -19,7 +14,7 @@ module attributes {transform.with_named_sequence} {
   
   // --- Executable Definition ---
   hal.executable private @custom_ita_executable {
-    hal.executable.variant public @embedded_elf_x86_64 target(#executable_target_embedded_elf_x86_64) 
+    hal.executable.variant public @x86_64 target(#executable_target_embedded_elf_x86_64) 
     objects([#hal.executable.object<{path = "dummy_dispatch_x86_64.o"}>]) {
       
       // Export for ITASelfAttention (negation)
@@ -33,8 +28,8 @@ module attributes {transform.with_named_sequence} {
         // IMPORTANT: The function signature here must match the C function's expanded memref parameters
         // Even though we have static dimensions, MLIR expands memref to 5 parameters
         func.func private @ITASelfAttention_workgroup(
-          memref<1x128x128xf16>,  // This will expand to 5 parameters in LLVM
-          memref<1x128x128xf16>   // This will also expand to 5 parameters
+          memref<1x128x128xf32>,  // This will expand to 5 parameters in LLVM
+          memref<1x128x128xf32>   // This will also expand to 5 parameters
         ) attributes {hal.import.static}
         
         // Wrapper for ITASelfAttention  
@@ -43,14 +38,14 @@ module attributes {transform.with_named_sequence} {
           
           // Get tensor bindings with static dimensions
           %in_binding = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) : 
-            memref<1x128x128xf16>
+            memref<1x128x128xf32>
           %out_binding = hal.interface.binding.subspan layout(#pipeline_layout) binding(1) alignment(64) offset(%c0) : 
-            memref<1x128x128xf16>
+            memref<1x128x128xf32>
           
           // Call external function
           // Note: No additional parameters needed since we're using a single workgroup
           func.call @ITASelfAttention_workgroup(%in_binding, %out_binding) : 
-            (memref<1x128x128xf16>, memref<1x128x128xf16>) -> ()
+            (memref<1x128x128xf32>, memref<1x128x128xf32>) -> ()
           return
         }
       }
@@ -58,33 +53,33 @@ module attributes {transform.with_named_sequence} {
   } // hal.executable
 
   // Utility function to call the custom kernel
-  util.func private @call_ITASelfAttention(%in_arg: tensor<1x128x128xf16>) -> tensor<1x128x128xf16> {
+  util.func private @call_ITASelfAttention(%in_arg: tensor<1x128x128xf32>) -> tensor<1x128x128xf32> {
     %workload = arith.constant 1 : index
     
     // Dispatch with NO constants and only 2 tensors (input and output)
-    %result = flow.dispatch @custom_ita_executable::@embedded_elf_x86_64::@ITASelfAttention[%workload](
+    %result = flow.dispatch @custom_ita_executable::@x86_64::@ITASelfAttention[%workload](
       %in_arg
-    ) : (tensor<1x128x128xf16>) 
-      -> tensor<1x128x128xf16>
+    ) : (tensor<1x128x128xf32>) 
+      -> tensor<1x128x128xf32>
     
-    util.return %result : tensor<1x128x128xf16>
+    util.return %result : tensor<1x128x128xf32>
   }
 
   // Transform matcher to find the negation pattern
   transform.named_sequence @match_ITASelfAttention(%root: !transform.any_op {transform.readonly}) 
       -> (!transform.any_value, !transform.any_value) {
     %ins, %outs = transform.iree.match.cast_compatible_dag_from_root %root {
-      ^bb0(%arg_in: tensor<1x128x128xf16>):
-        %empty = tensor.empty() {"match.operation_name_only"} : tensor<1x128x128xf16> 
+      ^bb0(%arg_in: tensor<1x128x128xf32>):
+        %empty = tensor.empty() {"match.operation_name_only"} : tensor<1x128x128xf32> 
         
         %neg = linalg.generic {
           indexing_maps = [#map1, #map1], 
           iterator_types = ["parallel", "parallel", "parallel"]
-        } ins(%arg_in : tensor<1x128x128xf16>) outs(%empty : tensor<1x128x128xf16>) {
-          ^bb0(%in: f16, %out: f16):
-            %res = arith.negf %in : f16
-            linalg.yield %res : f16
-        } -> tensor<1x128x128xf16>
+        } ins(%arg_in : tensor<1x128x128xf32>) outs(%empty : tensor<1x128x128xf32>) {
+          ^bb0(%in: f32, %out: f32):
+            %res = arith.negf %in : f32
+            linalg.yield %res : f32
+        } -> tensor<1x128x128xf32>
     } : (!transform.any_op) -> (!transform.any_value, !transform.any_value)
     transform.yield %ins, %outs : !transform.any_value, !transform.any_value
   }
