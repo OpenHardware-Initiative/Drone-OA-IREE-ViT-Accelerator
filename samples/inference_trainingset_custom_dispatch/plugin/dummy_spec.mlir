@@ -22,57 +22,24 @@ module attributes {transform.with_named_sequence} {
     hal.executable.variant public @embedded_elf_x86_64 target(#executable_target_embedded_elf_x86_64) 
     objects([#hal.executable.object<{path = "dummy_dispatch_x86_64.o"}>]) {
       
-      // Export for ITAFF (absolute value)
-      hal.executable.export public @ITAFF ordinal(0) layout(#pipeline_layout) 
-      count(%device: !hal.device, %workload: index) -> (index, index, index) {
-        %c1 = arith.constant 1 : index
-        hal.return %c1, %c1, %c1 : index, index, index
-      }
-      
       // Export for ITASelfAttention (negation)
-      hal.executable.export public @ITASelfAttention ordinal(1) layout(#pipeline_layout)
+      hal.executable.export public @ITASelfAttention ordinal(0) layout(#pipeline_layout)
       count(%device: !hal.device, %workload: index) -> (index, index, index) {
         %c1 = arith.constant 1 : index
         hal.return %c1, %c1, %c1 : index, index, index
       }
       
       builtin.module {
-        // External function declarations - with dimension parameters
-        func.func private @ITAFF_workgroup(
-          %in_binding: memref<1x128x128xf16>, 
-          %out_binding: memref<1x128x128xf16>,
-          %d0: index, %d1: index, %d2: index
-        ) attributes {hal.import.static}
-        
+        // IMPORTANT: The function signature here must match the C function's expanded memref parameters
+        // Even though we have static dimensions, MLIR expands memref to 5 parameters
         func.func private @ITASelfAttention_workgroup(
-          %in_binding: memref<1x128x128xf16>, 
-          %out_binding: memref<1x128x128xf16>,
-          %d0: index, %d1: index, %d2: index
+          memref<1x128x128xf16>,  // This will expand to 5 parameters in LLVM
+          memref<1x128x128xf16>   // This will also expand to 5 parameters
         ) attributes {hal.import.static}
-        
-        // Wrapper for ITAFF
-        func.func @ITAFF() {
-          %c0 = arith.constant 0 : index
-          %c1 = arith.constant 1 : index
-          %c128 = arith.constant 128 : index
-          
-          // Get tensor bindings with static dimensions
-          %in_binding = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) : 
-            memref<1x128x128xf16>
-          %out_binding = hal.interface.binding.subspan layout(#pipeline_layout) binding(1) alignment(64) offset(%c0) : 
-            memref<1x128x128xf16>
-          
-          // Call external function with dimensions
-          func.call @ITAFF_workgroup(%in_binding, %out_binding, %c1, %c128, %c128) : 
-            (memref<1x128x128xf16>, memref<1x128x128xf16>, index, index, index) -> ()
-          return
-        }
         
         // Wrapper for ITASelfAttention  
         func.func @ITASelfAttention() {
           %c0 = arith.constant 0 : index
-          %c1 = arith.constant 1 : index
-          %c128 = arith.constant 128 : index
           
           // Get tensor bindings with static dimensions
           %in_binding = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) : 
@@ -80,31 +47,18 @@ module attributes {transform.with_named_sequence} {
           %out_binding = hal.interface.binding.subspan layout(#pipeline_layout) binding(1) alignment(64) offset(%c0) : 
             memref<1x128x128xf16>
           
-          // Call external function with dimensions
-          func.call @ITASelfAttention_workgroup(%in_binding, %out_binding, %c1, %c128, %c128) : 
-            (memref<1x128x128xf16>, memref<1x128x128xf16>, index, index, index) -> ()
+          // Call external function
+          // Note: No additional parameters needed since we're using a single workgroup
+          func.call @ITASelfAttention_workgroup(%in_binding, %out_binding) : 
+            (memref<1x128x128xf16>, memref<1x128x128xf16>) -> ()
           return
         }
       }
     } // hal.executable.variant
   } // hal.executable
 
-  // --- Utility Functions for Dispatching ---
-  util.func private @call_ITAFF(%in_arg: tensor<1x128x128xf16>) -> tensor<1x128x128xf16> {
-    
-    %workload = arith.constant 1 : index
-    
-    // Dispatch with NO constants and only 2 tensors (input and output)
-    %result = flow.dispatch @custom_ita_executable::@embedded_elf_x86_64::@ITAFF[%workload](
-      %in_arg
-    ) : (tensor<1x128x128xf16>) 
-      -> tensor<1x128x128xf16>
-    
-    util.return %result : tensor<1x128x128xf16>
-  }
-  
+  // Utility function to call the custom kernel
   util.func private @call_ITASelfAttention(%in_arg: tensor<1x128x128xf16>) -> tensor<1x128x128xf16> {
-    
     %workload = arith.constant 1 : index
     
     // Dispatch with NO constants and only 2 tensors (input and output)
@@ -116,38 +70,13 @@ module attributes {transform.with_named_sequence} {
     util.return %result : tensor<1x128x128xf16>
   }
 
-  // --- Matcher Sequences with static shapes ---
-  transform.named_sequence @match_ITAFF(%root: !transform.any_op {transform.readonly}) 
-      -> (!transform.any_value, !transform.any_value) {
-    %ins, %outs = transform.iree.match.cast_compatible_dag_from_root %root {
-      ^bb0(%arg_in: tensor<1x128x128xf16>):
-
-        %c0 = arith.constant 0 : index
-        %d0 = tensor.dim %arg_in, %c0 : tensor<1x128x128xf16>
-        %empty = tensor.empty() {"match.operation_name_only"} : tensor<1x128x128xf16>
-
-        %abs = linalg.generic {
-          indexing_maps = [#map1, #map1], 
-          iterator_types = ["parallel", "parallel", "parallel"]
-        } ins(%arg_in : tensor<1x128x128xf16>) outs(%empty : tensor<1x128x128xf16>) {
-          ^bb0(%in: f16, %out: f16):
-            %res = math.absf %in : f16
-            linalg.yield %res : f16
-        } -> tensor<1x128x128xf16>
-    } : (!transform.any_op) -> (!transform.any_value, !transform.any_value)
-    transform.yield %ins, %outs : !transform.any_value, !transform.any_value
-  }
-
+  // Transform matcher to find the negation pattern
   transform.named_sequence @match_ITASelfAttention(%root: !transform.any_op {transform.readonly}) 
       -> (!transform.any_value, !transform.any_value) {
     %ins, %outs = transform.iree.match.cast_compatible_dag_from_root %root {
       ^bb0(%arg_in: tensor<1x128x128xf16>):
-
-        %c0 = arith.constant 0 : index
-        %d0 = tensor.dim %arg_in, %c0 : tensor<1x128x128xf16>
-        // --------------------------------------------------------------------
-        %empty = tensor.empty() {"match.operation_name_only"} : tensor<1x128x128xf16>
-
+        %empty = tensor.empty() {"match.operation_name_only"} : tensor<1x128x128xf16> 
+        
         %neg = linalg.generic {
           indexing_maps = [#map1, #map1], 
           iterator_types = ["parallel", "parallel", "parallel"]
@@ -160,22 +89,7 @@ module attributes {transform.with_named_sequence} {
     transform.yield %ins, %outs : !transform.any_value, !transform.any_value
   }
 
-  // --- Replacer Sequences ---
-  transform.named_sequence @replace_with_ITAFF_call(
-      %ins: !transform.any_value {transform.readonly}, 
-      %out: !transform.any_value {transform.readonly}) {
-    %root = transform.get_defining_op %out : (!transform.any_value) -> !transform.any_op
-    %module = transform.util.get_nearest_symbol_table %root : (!transform.any_op) -> !transform.any_op
-    %executable = transform.util.import_symbol @custom_ita_executable into %module if undefined : 
-      (!transform.any_op) -> !transform.any_op
-    %func = transform.util.import_symbol @call_ITAFF into %module if undefined : 
-      (!transform.any_op) -> !transform.any_op
-    transform.util.cast_and_call %func(%ins) -> %out after %root {
-      transform.type_conversion.tensor.cast_shape_dynamic_dims
-    } : (!transform.any_op, !transform.any_value, !transform.any_value, !transform.any_op) -> !transform.any_op
-    transform.yield
-  }
-  
+  // Transform rewriter to replace with custom kernel call
   transform.named_sequence @replace_with_ITASelfAttention_call(
       %ins: !transform.any_value {transform.readonly}, 
       %out: !transform.any_value {transform.readonly}) {
@@ -193,13 +107,11 @@ module attributes {transform.with_named_sequence} {
 
   // --- Main Transform Entry Point ---
   transform.named_sequence @__transform_main(%module: !transform.any_op) {
-    %funcs = transform.structured.match ops{["func.func", "util.func"]} in %module : 
+    %funcs = transform.structured.match ops{["util.func"]} in %module : 
       (!transform.any_op) -> !transform.any_op
     transform.foreach %funcs : !transform.any_op {
       ^bb1(%func: !transform.any_op):
-        // Combine both matches in a single foreach_match to avoid invalidation
         transform.foreach_match in %func
-          @match_ITAFF -> @replace_with_ITAFF_call,
           @match_ITASelfAttention -> @replace_with_ITASelfAttention_call
         : (!transform.any_op) -> (!transform.any_op)
     }
