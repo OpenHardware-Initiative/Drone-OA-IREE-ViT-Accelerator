@@ -1,6 +1,8 @@
-# Drone-ViT-HW-Accelerator
+# Link to our video submission for the AMD Open Hardware Competition 2025
 
 [![Embedded YouTube Video](https://img.youtube.com/vi/RXjw670piBA/0.jpg)](https://www.youtube.com/watch?v=RXjw670piBA)
+
+# Drone-ViT-HW-Accelerator
 
 This repository provides the toolchain, scripts, and documentation for compiling and accelerating a Vision Transformer (ViT) model for deployment on a Xilinx Kria SOM. It utilizes the IREE (Intermediate Representation Execution Environment) compiler framework to target the embedded ARM architecture from an x86_64 host machine.
 
