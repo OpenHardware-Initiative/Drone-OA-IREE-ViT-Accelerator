@@ -441,7 +441,7 @@ def main(args):
     organized_params = organize_params_by_block(all_torch_params)
     print("✅ Parameters organized.")
     
-    # --- Loop over blocks for verification (No changes needed below this line) ---
+    # --- Loop over blocks for verification ---
     for block_index in sorted(organized_params['attention'].keys()):
         print("\n" + "="*80)
         print(f"     VERIFYING TRANSFORMER BLOCK {block_index} vs. PYTORCH GROUND TRUTH")
@@ -452,57 +452,68 @@ def main(args):
         
         print(f"✅ Writing output for block {block_index} to: {os.path.abspath(output_dir)}")
         
+        # ======================================================================
+        # --- START OF MODIFIED SECTION ---
+        # ======================================================================
+        
         attn_block = organized_params['attention'][block_index]
-        ffn_block = organized_params['ffn'][block_index]
-        
-        
-        
-        #import pprint
-        #print("--- DEBUG: Organized Attention Block Contents ---")
-        #pprint.pprint(attn_block)
-        #print("--- DEBUG: Organized FFN Block Contents ---")
-        #pprint.pprint(ffn_block)
+        ffn_block = organized_params['ffn'].get(block_index) # Use .get() to avoid errors
+
+        ffn_data_found = ffn_block is not None and 'fc1' in ffn_block
+
+        if not ffn_data_found:
+            print("\n⚠️  WARNING: No quantized FFN data found.")
+            print("   Generating dummy zero-filled data for FFN hardware simulation.")
+            print("   FFN verification steps will be skipped.\n")
 
         def get_and_squeeze(param_dict):
             if param_dict is None or 'q_value' not in param_dict: return None
             val = param_dict['q_value']
-            
-            # <-- CHANGE: Squeeze the batch dimension (axis 0)
             if val.ndim >= 1 and val.shape[0] == 1:
                 val = np.squeeze(val, axis=0)
-
-            # <-- CHANGE: If it's still a 3D tensor (e.g., (1, 128, 128) for H=1), squeeze the head dimension (axis 0 again)
-            # This handles the specific case of attention layers where we expect (Seq, Seq) or (Seq, Embed)
             if val.ndim == 3 and val.shape[0] == 1:
                 val = np.squeeze(val, axis=0)
-
             return val
 
+        # --- Prepare Attention Tensors (Real Data) ---
         block_tensors = {
             'Q': get_and_squeeze(attn_block['q_proj']['input'][0]),
             'K': get_and_squeeze(attn_block['k_proj']['input'][0]),
             'V': get_and_squeeze(attn_block['v_proj']['input'][0]),
-            'FF_in': get_and_squeeze(ffn_block['fc1']['input'][0]),
-
-            # <-- CHANGE: Add .T to transpose each weight matrix
             'Wq': np.expand_dims(attn_block['q_proj']['weight']['q_value'].T, axis=0),
             'Wk': np.expand_dims(attn_block['k_proj']['weight']['q_value'].T, axis=0),
             'Wv': np.expand_dims(attn_block['v_proj']['weight']['q_value'].T, axis=0),
             'Wo': np.expand_dims(attn_block['out_proj']['weight']['q_value'].T, axis=0),
-            'Wff': np.expand_dims(ffn_block['fc1']['weight']['q_value'].T, axis=0),
-            'Wff2': np.expand_dims(ffn_block['fc2']['weight']['q_value'].T, axis=0),
-
-            # The biases are 1D vectors, so they do not need to be transposed.
             'Bq': np.expand_dims(dequantize_bias_to_int32(attn_block['q_proj']), axis=0),
             'Bk': np.expand_dims(dequantize_bias_to_int32(attn_block['k_proj']), axis=0),
             'Bv': np.expand_dims(dequantize_bias_to_int32(attn_block['v_proj']), axis=0),
             'Bo': np.expand_dims(dequantize_bias_to_int32(attn_block['out_proj']), axis=0),
-            'Bff': np.expand_dims(dequantize_bias_to_int32(ffn_block['fc1']), axis=0),
-            'Bff2': np.expand_dims(dequantize_bias_to_int32(ffn_block['fc2']), axis=0),
         }
 
-        
-        hw_params = translate_torch_scales_to_hw_params(attn_block, ffn_block, H=dims['H'])
+        # --- Prepare FFN Tensors (Real or Dummy Data) ---
+        if ffn_data_found:
+            block_tensors.update({
+                'FF_in': get_and_squeeze(ffn_block['fc1']['input'][0]),
+                'Wff': np.expand_dims(ffn_block['fc1']['weight']['q_value'].T, axis=0),
+                'Wff2': np.expand_dims(ffn_block['fc2']['weight']['q_value'].T, axis=0),
+                'Bff': np.expand_dims(dequantize_bias_to_int32(ffn_block['fc1']), axis=0),
+                'Bff2': np.expand_dims(dequantize_bias_to_int32(ffn_block['fc2']), axis=0),
+            })
+            hw_params = translate_torch_scales_to_hw_params(attn_block, ffn_block, H=dims['H'])
+        else:
+            # Create dummy zero tensors with the correct shapes (S, E, F)
+            S, E, F = dims['S'], dims['E'], dims['F']
+            # Note: We use zeros instead of 0xAAAA because the simulator expects
+            # standard int8/int32 arrays. 0 is a safe default.
+            block_tensors.update({
+                'FF_in': np.zeros((S, E), dtype=np.int8),
+                'Wff': np.zeros((1, E, F), dtype=np.int8),
+                'Wff2': np.zeros((1, F, E), dtype=np.int8),
+                'Bff': np.zeros((1, F), dtype=np.int32),
+                'Bff2': np.zeros((1, E), dtype=np.int32),
+            })
+            # Generate HW params for attention only, FFN will get empty dict
+            hw_params = translate_torch_scales_to_hw_params(attn_block, {}, H=dims['H'])
 
         ita_sim = Transformer(ITA_N=16, path=output_dir, activation='relu', **dims, **block_tensors, quant_params=hw_params)
         
