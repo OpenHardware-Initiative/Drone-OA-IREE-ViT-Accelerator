@@ -1,0 +1,58 @@
+# HOW TO optimize Vision Transformer (ViT) computations in hardware
+
+This guide provides an overview of common PyTorch operations used in Vision Transformers and strategies for optimizing them in a hardware implementation.
+
+## Computation Mapping to Hardware
+
+| **Computation** | **Description** | **Comments** |
+| --- | --- | --- |
+| **Unsqueeze** | Inserts a dimension of size one at a specified position. | Purely shape manipulation, not needed in hardware—can be handled by addressing logic. |
+| **Matmul** | Matrix product of two tensors. | Can be implemented with a systolic array or tiling. |
+| **Shape** | Returns the size of the tensor. | Metadata only—not a computational op. Not relevant for custom logic on FPGA. |
+| **Gather** | Gathers values along a specified axis. | Useful for attention-like operations or index-based fetching. Can be implemented with scatter-gather DMA or indirect addressing units. |
+| **Concat** | Concatenates a sequence of tensors along a dimension. | Can be implemented with a buffer system using DMA or smart addressing. |
+| **Reshape**  | Returns a tensor with the same data but a new shape. | Can be implemented with a buffer system using DMA or smart addressing. |
+| **Transpose** | Swaps two specified dimensions of a tensor. | Can be implemented with a buffer system using DMA or smart addressing. |
+| **Softmax** | Applies the Softmax function to a tensor. | Can be implemented with Look-Up Table (LUT) approximations. |
+
+---
+
+## Fused Matmul and Softmax Optimization
+
+In a typical attention mechanism, Matmul (`Q × Kᵀ`) is followed by Softmax and another Matmul (`A × V`). This can be fused into a single, efficient hardware process.
+
+**Fused Process Flow:**
+1.  **Perform partial `Q × Kᵀ` computation** for a tile.
+2.  **Accumulate partial denominators and maxima** for softmax row-wise.
+3.  Once a full row of the attention matrix is computed:
+    *   Invert the denominator.
+    *   Stream in **V** and apply **A × V** using the just-normalized A values.
+4.  Send the result directly to the output buffer.
+
+This entire fused process can happen in parallel across multiple processing elements (PEs), where each PE handles one row of the tile.
+
+---
+
+## Memory and Pipeline Optimizations
+
+### 1. Input Reuse with Broadcast / Tiling-Aware Layout
+
+**Problem:** Naive memory layouts cause inputs (Q, K, V matrices) to be fetched multiple times, creating bandwidth bottlenecks.
+
+**Solution: Align Memory Layout to PE Access**
+*   **Contiguous Row Storage:** Store input matrix rows contiguously so each PE can burst-read its full input row in a single transaction.
+*   **Interleaved Memory Banks:** Distribute rows across multiple BRAMs or SRAM banks. This allows all PEs to access their required data in parallel without contention.
+*   **Broadcast Shared Inputs:** Use a broadcast bus or register file to distribute shared Q/K/V rows to multiple PEs, avoiding redundant memory reads.
+
+### 2. Pipeline Optimization with Double Buffering
+
+**Goal:** Overlap the computation of one tile with the data loading of the next tile to hide memory latency.
+
+**How it works:**
+*   Use two sets of buffers (ping-pong buffers) for inputs and outputs (e.g., `input_buffer_A`, `input_buffer_B`).
+*   While PEs are computing using `input_buffer_A`, a DMA controller preloads the next data tile into `input_buffer_B`.
+*   Once the computation is done, the buffers are swapped. The PEs start computing on `B` while the DMA loads new data into `A`.
+
+**Hardware Considerations:**
+*   Implement buffers using on-chip BRAMs or URAMs.
+*   Design a prefetch controller that tracks tile indices and triggers memory access ahead of time.
