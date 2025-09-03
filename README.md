@@ -2,7 +2,14 @@
 
 [![Embedded YouTube Video](https://img.youtube.com/vi/RXjw670piBA/0.jpg)](https://www.youtube.com/watch?v=RXjw670piBA)
 
-## OpenHardware Initiative
+## Project report
+
+We recommend you to have a look at our written report to know about the structure of the project.
+
+### ➡️ Report PDF: 
+> [docs/Project Report_ AI Compilers Meet FPGAs_ A HW_SW Co-Design Approach for Vision Transformers.pdf](https://github.com/OpenHardware-Initiative/Drone-OA-IREE-ViT-Accelerator/blob/main/docs/Project%20Report_%20AI%20Compilers%20Meet%20FPGAs_%20A%20HW_SW%20Co-Design%20Approach%20for%20Vision%20Transformers.pdf)
+
+## [OpenHardware Initiative](https://open-hardware-initiative.com/)
 
 If you are interested in collaborating or joining our student initiative at tum please reach out to [team@open-hardware-initiative.com](team@open-hardware-initiative.com) or visit our website [open-hardware-initiative.com](https://open-hardware-initiative.com/)
 
@@ -43,7 +50,7 @@ Drone-ViT-HW-Accelerator/
 To get started with this project, it is highly recommended to follow the comprehensive workflow guide, which details every step from environment setup to final deployment.
 
 ### ➡️ Full Project Guide: 
-> docs/HOW-TO-run-the-full-project-workflow.md
+> [docs/HOW-TO-run-the-full-project-workflow.md](https://github.com/OpenHardware-Initiative/Drone-OA-IREE-ViT-Accelerator/blob/main/docs/HOW-TO-run-the-full-project-workflow.md)
 
 #### Prerequisites:
 
@@ -56,7 +63,7 @@ Ensure you have the following software installed on your host machine:
 
 ## 📚 Documentation and HOW-TO Guides
 
-All documentation is located in the `/docs` directory. These guides provide detailed instructions for specific parts of the workflow.
+All documentation is located in the [`/docs`](https://github.com/OpenHardware-Initiative/Drone-OA-IREE-ViT-Accelerator/tree/main/docs) directory. These guides provide detailed instructions for specific parts of the workflow.
 
 ### Core Workflow
 
