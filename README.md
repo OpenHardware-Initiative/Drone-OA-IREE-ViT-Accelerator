@@ -2,6 +2,10 @@
 
 [![Embedded YouTube Video](https://img.youtube.com/vi/RXjw670piBA/0.jpg)](https://www.youtube.com/watch?v=RXjw670piBA)
 
+## OpenHardware Initiative
+
+If you are interested in collaborating or joining our student initiative at tum please reach out to [team@open-hardware-initiative.com](team@open-hardware-initiative.com) or visit our website [open-hardware-initiative.com](https://open-hardware-initiative.com/)
+
 # Drone-ViT-HW-Accelerator
 
 This repository contains the complete toolchain, hardware designs, and software for accelerating a quantized Vision Transformer (ViT) on a Xilinx Kria KR260 SOM. The project integrates a custom hardware accelerator (ITA) with the IREE compiler framework to provide an end-to-end workflow from model training to hardware-accelerated inference.
