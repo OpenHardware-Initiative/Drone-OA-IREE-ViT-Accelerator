@@ -1,4 +1,6 @@
-# Link to our video submission for the AMD Open Hardware Competition 2025
+# Framework for `Drone` `O`bstacle `A`voidance using `IREE` for a `Vi`sual `T`ransformer Hardware `Accelerator` platform
+
+## Link to our video submission for the AMD Open Hardware Competition 2025
 
 [![Embedded YouTube Video](https://img.youtube.com/vi/RXjw670piBA/0.jpg)](https://www.youtube.com/watch?v=RXjw670piBA)
 
